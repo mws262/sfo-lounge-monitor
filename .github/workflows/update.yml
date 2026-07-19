@@ -26,8 +26,12 @@ jobs:
       # stdlib only -- no pip install step.
       # Scoped to T1 (Harvey Milk / Club SFO): security scores the best T1
       # line, departures count T1 only; fog + ground delay stay airport-wide.
+      # SFO_TOMTOM_API_KEY (repo secret) enables the approach-congestion
+      # signal; absent, the module stays inert and weights renormalize.
       - name: Refresh data.json
         run: python -m sfo.publish --dir docs --terminal T1
+        env:
+          SFO_TOMTOM_API_KEY: ${{ secrets.SFO_TOMTOM_API_KEY }}
 
       - name: Commit if changed
         run: |

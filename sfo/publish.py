@@ -19,7 +19,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-from . import departures, drive, faa, metar, security
+from . import approach, departures, drive, faa, metar, security
 from .cli import gather
 from .config import Config
 from .score import WEIGHTS, band
@@ -46,6 +46,9 @@ def build_payload(bundle: dict, prev_history: list[dict],
         {"key": "gdp", "label": "Ground delay", "weight": WEIGHTS["gdp"][0],
          "score": subs.get("gdp"),
          "summary": faa.summarize(bundle.get("faa") or {})},
+        {"key": "approach", "label": "Approach", "weight": WEIGHTS["approach"][0],
+         "score": subs.get("approach"),
+         "summary": approach.summarize(bundle.get("approach") or {})},
         {"key": "drive", "label": "Drive", "weight": WEIGHTS["drive"][0],
          "score": subs.get("drive"),
          "summary": drive.summarize(bundle.get("drive") or {})},

@@ -7,6 +7,12 @@
 #   SFO_GOOGLE_ROUTES_API_KEY, SFO_DRIVE_ORIGIN.
 # Env vars win over this file (handy for systemd EnvironmentFile= secrets).
 
+[tomtom]
+# Free key (no card) from developer.tomtom.com. Powers the "approach" signal:
+# live congestion on US-101 + the terminal access road. ~216 of the free
+# 2,500 calls/day at the 20-min cadence. Inert if empty.
+api_key = ""
+
 [google]
 # Google Cloud "Routes API" key. Without it, the composite drops "drive".
 routes_api_key = ""

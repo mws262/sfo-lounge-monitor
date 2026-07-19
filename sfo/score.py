@@ -17,6 +17,7 @@ WEIGHTS = {
     "fog": (0.20, "fog"),
     "departures": (0.20, "departures"),
     "gdp": (0.15, "ground-delay"),
+    "approach": (0.10, "approach"),
     "drive": (0.10, "drive"),
 }
 

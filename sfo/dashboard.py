@@ -269,7 +269,7 @@ def render_html(
     lng = bundle.get("lounge") or {}
 
     # Signal rows (label, subscore-key, human summary from the module).
-    from . import security, metar, faa, departures, drive
+    from . import security, metar, faa, departures, approach, drive
     rows = [
         ("security", subs.get("security"),
          security.summarize(bundle.get("security") or {}, terminal)),
@@ -277,12 +277,14 @@ def render_html(
         ("departures", subs.get("departures"),
          departures.summarize(bundle.get("departures") or {}, terminal)),
         ("ground delay", subs.get("gdp"), faa.summarize(bundle.get("faa") or {})),
+        ("approach", subs.get("approach"),
+         approach.summarize(bundle.get("approach") or {})),
         ("drive", subs.get("drive"), drive.summarize(bundle.get("drive") or {})),
     ]
     from .score import WEIGHTS
     wmap = {"security": WEIGHTS["security"][0], "fog": WEIGHTS["fog"][0],
             "departures": WEIGHTS["departures"][0], "ground delay": WEIGHTS["gdp"][0],
-            "drive": WEIGHTS["drive"][0]}
+            "approach": WEIGHTS["approach"][0], "drive": WEIGHTS["drive"][0]}
     bars = "".join(
         _signal_bar(lbl.replace("_", " ").title(), val, wmap.get(lbl), summ)
         for lbl, val, summ in rows

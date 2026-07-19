@@ -57,6 +57,11 @@ class Config:
 
     # Convenience -----------------------------------------------------------
     @property
+    def tomtom_key(self) -> str | None:
+        key = self.get("tomtom.api_key")
+        return str(key) if key else None
+
+    @property
     def google_routes_key(self) -> str | None:
         key = self.get("google.routes_api_key")
         return str(key) if key else None
