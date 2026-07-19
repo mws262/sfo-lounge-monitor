@@ -1,8 +1,14 @@
 """KSFO weather / fog risk from the Aviation Weather Center METAR API.
 
-SFO's parallel-runway approach degrades in the marine layer: a low, dropping
-ceiling cascades into arrival delays *before* delay feeds show them. So ceiling
-+ flight category is a leading indicator, weighted independently of GDP.
+Historically this was SFO's dominant delay driver: the marine layer dropping
+the ceiling below ~3,500 ft cost the airport its side-by-side parallel
+landings, halving arrival capacity. As of spring 2026 the FAA PERMANENTLY
+BANNED those side-by-side landings on safety grounds, so fair-weather arrivals
+are now ~36/hr in ALL conditions -- the big weather-driven swing is gone.
+
+A low ceiling still adds restriction (single-runway ops, go-arounds), so this
+stays as a soft leading hint, but it's de-weighted in the composite and the
+measured flight-delay bars are the reliable read now.
 """
 from __future__ import annotations
 
@@ -12,24 +18,21 @@ from . import common
 
 URL = "https://aviationweather.gov/api/data/metar?ids=KSFO&format=json"
 
-# The operational cliff. SFO's two arrival runways are 750 ft apart, so
-# side-by-side ("dual") parallel landings need visual conditions: a ceiling of
-# >=3,500 ft and >5 mi visibility. Above that, ~55 arrivals/hr. The moment the
-# marine layer drops the ceiling below ~3,500 ft, SFO reverts to a single
-# arrival stream and capacity roughly HALVES to ~30/hr -- the cause of roughly
-# half of all SFO delay. (theclubairportlounges/MIT-LL marine stratus studies.)
-DUAL_APPROACH_CEILING_FT = 3500
-DUAL_APPROACH_VIS_SM = 5
+# Rough marker for "ceiling low enough to add restriction." This used to be the
+# hard side-by-side floor (~3,500 ft); post-ban it's just a soft IMC-onset hint.
+LOW_CEILING_FT = 3500
 
 # Flight-category baseline risk. LIFR/IFR at SFO = marine layer choking arrivals.
 _FLTCAT_BASE = {"VFR": 5, "MVFR": 40, "IFR": 80, "LIFR": 100}
 
 # Shown as the fog signal's tooltip so the number has a sense of scale.
 SCALE_NOTE = (
-    "SFO lands side-by-side on both runways only in visual conditions "
-    "(ceiling >=3,500 ft & vis >5 mi): ~55 arrivals/hr. Below ~3,500 ft the "
-    "marine layer forces a single stream -> ~30/hr, and delays build during "
-    "the arrival banks. The score jumps as the ceiling falls past 3,500 ft."
+    "Heads up: the FAA permanently banned SFO's side-by-side parallel landings "
+    "(spring 2026), cutting fair-weather arrivals from ~54 to ~36/hr in ALL "
+    "conditions -- so SFO now runs delay-prone even on clear days. A low marine "
+    "ceiling still adds restriction (single-runway, go-arounds) on top, but the "
+    "weather swing is smaller than before. The flight-delay bars measure the "
+    "real outcome and are the better guide now."
 )
 
 
@@ -125,11 +128,10 @@ def summarize(reading: dict) -> str:
     # number carries scale: below it, SFO's arrival rate roughly halves.
     if ceil is None:
         ceil_txt = "no ceiling"
-    elif ceil < DUAL_APPROACH_CEILING_FT:
-        ceil_txt = (f"{ceil}ft ceiling - below the {DUAL_APPROACH_CEILING_FT}ft "
-                    f"dual-approach floor, arrivals ~halved")
+    elif ceil < LOW_CEILING_FT:
+        ceil_txt = f"{ceil}ft ceiling - low, adds restriction on the ~36/hr rate"
     else:
-        ceil_txt = f"{ceil}ft ceiling - above the {DUAL_APPROACH_CEILING_FT}ft floor"
+        ceil_txt = f"{ceil}ft ceiling"
     return (
         f"Weather: {reading.get('fltCat','?')}, {ceil_txt}, {vis_txt} "
         f"(wind {reading.get('wind_dir','?')}@{reading.get('wind_kt','?')}kt)"

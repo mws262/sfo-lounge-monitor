@@ -12,11 +12,15 @@ from __future__ import annotations
 from typing import Any
 
 # component key -> (weight, label). Security replaces the dead TSA feed.
+# Weights are renormalized over whatever signals are present, so only the
+# ratios matter. Fog was de-weighted (0.20 -> 0.12) after the FAA's spring-2026
+# ban on side-by-side landings made weather a smaller marginal factor -- see
+# metar.SCALE_NOTE. GDP nudged up (it fires more often under the reduced rate).
 WEIGHTS = {
     "security": (0.35, "security"),
-    "fog": (0.20, "fog"),
+    "fog": (0.12, "fog"),
     "departures": (0.20, "departures"),
-    "gdp": (0.15, "ground-delay"),
+    "gdp": (0.18, "ground-delay"),
     "approach": (0.10, "approach"),
     "drive": (0.10, "drive"),
 }
