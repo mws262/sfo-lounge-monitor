@@ -127,6 +127,8 @@ def _bucket_stats(delays: list[float]) -> dict[str, Any]:
         "delayed_pct": round(len(late) / n * 100) if n else None,
         "median_delay_min": round(statistics.median(late)) if late else None,
         "max_delay_min": round(max(late)) if late else None,
+        # Full sorted distribution (ints, minutes) for the gradient-bar viz.
+        "delays_sorted": sorted(round(d) for d in delays),
     }
 
 

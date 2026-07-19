@@ -51,10 +51,25 @@ body{background:var(--bg);color:var(--ink);
   text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:600;
   color:#fff;padding:3px 10px;border-radius:999px;background:var(--muted);}
 .verdict{font-size:17px;text-wrap:balance;max-width:46ch;}
-.delayline{font-size:13px;color:var(--muted);}
-.delayline b{color:var(--ink);font-weight:600;font-family:ui-monospace,monospace;
-  font-variant-numeric:tabular-nums;}
 .missing{font-size:12px;color:var(--muted);}
+
+.delayscard{margin-bottom:18px;}
+.dbar-row{display:grid;grid-template-columns:120px 1fr 82px;gap:12px;
+  align-items:start;margin-bottom:16px;}
+.dbar-row:last-child{margin-bottom:4px;}
+@media(max-width:720px){.dbar-row{grid-template-columns:96px 1fr 60px;}}
+.dbar-label{font-family:ui-monospace,monospace;font-size:12px;font-weight:600;
+  padding-top:3px;}
+.dbar-wrap{position:relative;padding-top:4px;}
+.dbar{height:14px;border-radius:4px;}
+.dtick{position:absolute;top:0;width:2px;height:22px;background:var(--ink);
+  opacity:.55;border-radius:1px;transform:translateX(-1px);}
+.dlabels{display:flex;justify-content:space-between;
+  font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:11px;color:var(--muted);margin-top:4px;}
+.dbar-meta{font-family:ui-monospace,monospace;font-size:11px;
+  color:var(--muted);text-align:right;padding-top:3px;}
+.dbar-empty{font-size:12px;color:var(--muted);padding-top:3px;}
 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.hero{grid-template-columns:1fr}}
@@ -126,9 +141,16 @@ body{background:var(--bg);color:var(--ink);
     <div class="hero-body">
       <span class="bandpill" id="band">loading</span>
       <div class="verdict" id="verdict">Fetching the latest from SFO&hellip;</div>
-      <div class="delayline" id="delays"></div>
       <div class="missing" id="missing"></div>
     </div>
+  </div>
+
+  <div class="card delayscard" id="delaycard" hidden
+    title="Each bar: flights sorted by delay, left (least) to right (most). Color = delay minutes on a shared 0..max scale, green to red. Took off = actual vs schedule for the last 2 hours; next 3h = airline estimates, which skew optimistic.">
+    <div class="card-title">Flight delays <span class="dim" id="delay-scope"></span></div>
+    <div id="delaybars"></div>
+    <div class="legend">flights sorted by delay &middot; color = delay, <b>0m</b> green
+      &rarr; <b>max</b> red (shared scale) &middot; ticks at min / median / max</div>
   </div>
 
   <div class="grid">
@@ -349,31 +371,62 @@ function renderAirport(d){
   lastLoungeStateFromData = d.lounge && d.lounge.state || null;
   $("verdict").textContent = verdictText(bandName, lastLoungeStateFromData);
 
-  // Explicit delay stats: actuals from the last 2h, then forward estimates.
-  const dl = d.delays, dEl = $("delays");
-  dEl.textContent = "";
-  const bold = (t) => { const el = document.createElement("b");
-    el.textContent = t; return el; };
-  const bucket = (st, cxl) => {
-    if(!st || !st.n){ dEl.append("no data"); return; }
-    if(!st.delayed_n){ dEl.append("none of " + st.n + " late"); }
-    else{
-      dEl.append(bold(st.delayed_n + "/" + st.n));
-      dEl.append(" ≥15m late (" + st.delayed_pct + "%) · median ");
-      dEl.append(bold(st.median_delay_min + "m"));
-      dEl.append(" · worst " + st.max_delay_min + "m");
+  // Flight-delay gradient bars: each bar is the bucket's flights sorted by
+  // delay; color maps delay minutes 0 -> shared max onto green -> red.
+  const dl = d.delays || {};
+  const medOf = a => { const m = a.length >> 1;
+    return a.length % 2 ? a[m] : Math.round((a[m-1] + a[m]) / 2); };
+  const buckets = [
+    ["took off last 2h", dl.departed, ""],
+    ["next 3h (est)", dl.upcoming,
+     (dl.upcoming && dl.upcoming.cancelled) ? dl.upcoming.cancelled + " cxl" : ""],
+  ];
+  const gmax = Math.max(0, ...buckets.flatMap(bk => (bk[1] && bk[1].delays_sorted) || []));
+  const bars = $("delaybars");
+  bars.textContent = "";
+  let anyBar = false;
+  for(const [label, st, extra] of buckets){
+    const arr = (st && st.delays_sorted) || [];
+    const row = document.createElement("div"); row.className = "dbar-row";
+    const lab = document.createElement("div"); lab.className = "dbar-label";
+    lab.textContent = label;
+    row.append(lab);
+    if(!arr.length){
+      const empty = document.createElement("div"); empty.className = "dbar-empty";
+      empty.textContent = "no data"; row.append(empty);
+    }else{
+      anyBar = true;
+      const wrapEl = document.createElement("div"); wrapEl.className = "dbar-wrap";
+      const stops = arr.map((v, i) => {
+        const off = arr.length === 1 ? 0 : (i / (arr.length - 1)) * 100;
+        const t = gmax ? Math.min(1, v / gmax) : 0;
+        return "hsl(" + Math.round(120 * (1 - t)) + ",72%,44%) " + off.toFixed(1) + "%";
+      });
+      if(arr.length === 1) stops.push(stops[0].replace(" 0.0%", " 100%"));
+      const bar = document.createElement("div"); bar.className = "dbar";
+      bar.style.background = "linear-gradient(to right," + stops.join(",") + ")";
+      wrapEl.append(bar);
+      for(const p of [0, 50, 100]){
+        const tick = document.createElement("div"); tick.className = "dtick";
+        tick.style.left = p + "%"; wrapEl.append(tick);
+      }
+      const lbls = document.createElement("div"); lbls.className = "dlabels";
+      for(const [k, v] of [["min", arr[0]], ["med", medOf(arr)],
+                           ["max", arr[arr.length - 1]]]){
+        const s = document.createElement("span");
+        s.textContent = k + " " + v + "m"; lbls.append(s);
+      }
+      wrapEl.append(lbls);
+      row.append(wrapEl);
     }
-    if(cxl) dEl.append(" · " + cxl + " cancelled");
-  };
-  if(dl && ((dl.departed && dl.departed.n) || (dl.upcoming && dl.upcoming.n))){
-    dEl.append((d.terminal ? d.terminal + " " : "") + "delays — took off last 2h: ");
-    bucket(dl.departed, 0);
-    dEl.append("   ·   next 3h (est): ");
-    bucket(dl.upcoming, dl.upcoming && dl.upcoming.cancelled);
-    dEl.title = "Took off = actual departure vs schedule for flights that left in "
-      + "the last 2 hours (ground truth). Next 3h = airline estimates, which "
-      + "skew optimistic. 15 min is the standard cutoff.";
+    const meta = document.createElement("div"); meta.className = "dbar-meta";
+    meta.textContent = (st && st.n ? st.n + " flights" : "")
+      + (extra ? " · " + extra : "");
+    row.append(meta);
+    bars.append(row);
   }
+  $("delaycard").hidden = !anyBar;
+  $("delay-scope").textContent = "· " + (d.terminal ? d.terminal + " " : "") + "departures";
   $("missing").textContent = (d.missing && d.missing.length)
     ? "not counted: " + d.missing.join(", ") + " (weights renormalized)" : "";
   $("scope").textContent = d.terminal ? " · " + d.terminal : "";

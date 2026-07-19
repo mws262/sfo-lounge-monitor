@@ -105,6 +105,38 @@ def _sparkline(values: list[float], w: int = 260, h: int = 44,
     )
 
 
+def _delay_bar_row(label: str, st: dict, gmax: int, extra: str) -> str:
+    """One gradient-bar row: flights sorted by delay, colored green->red."""
+    arr = (st or {}).get("delays_sorted") or []
+    meta = (f'{st["n"]} flights' if st.get("n") else "") + \
+        (f' &middot; {extra}' if extra else "")
+    if not arr:
+        return (f'<div class="dbar-row"><div class="dbar-label">{_esc(label)}'
+                f'</div><div class="dbar-empty">no data</div>'
+                f'<div class="dbar-meta">{meta}</div></div>')
+
+    n = len(arr)
+    stops = []
+    for i, v in enumerate(arr):
+        off = 0.0 if n == 1 else i / (n - 1) * 100
+        t = min(1.0, v / gmax) if gmax else 0.0
+        stops.append(f"hsl({round(120 * (1 - t))},72%,44%) {off:.1f}%")
+    if n == 1:
+        stops.append(stops[0].replace(" 0.0%", " 100%"))
+    med = arr[n // 2] if n % 2 else round((arr[n // 2 - 1] + arr[n // 2]) / 2)
+    ticks = "".join(f'<div class="dtick" style="left:{p}%"></div>'
+                    for p in (0, 50, 100))
+    labels = "".join(f"<span>{k} {v}m</span>"
+                     for k, v in (("min", arr[0]), ("med", med),
+                                  ("max", arr[-1])))
+    return (
+        f'<div class="dbar-row"><div class="dbar-label">{_esc(label)}</div>'
+        f'<div class="dbar-wrap"><div class="dbar" style="background:'
+        f'linear-gradient(to right,{",".join(stops)})"></div>{ticks}'
+        f'<div class="dlabels">{labels}</div></div>'
+        f'<div class="dbar-meta">{meta}</div></div>')
+
+
 def _lounge_card(lng: dict) -> str:
     if lng.get("ok") is False:
         return ('<div class="card lounge"><div class="card-title">Club SFO</div>'
@@ -210,9 +242,23 @@ body{background:var(--bg);color:var(--ink);
   text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:600;
   color:#fff;padding:3px 10px;border-radius:999px;}
 .verdict{font-size:17px;text-wrap:balance;max-width:46ch;}
-.delayline{font-size:13px;color:var(--muted);}
-.delayline b{color:var(--ink);font-weight:600;font-family:ui-monospace,monospace;
-  font-variant-numeric:tabular-nums;}
+.delayscard{margin-bottom:18px;}
+.dbar-row{display:grid;grid-template-columns:120px 1fr 82px;gap:12px;
+  align-items:start;margin-bottom:16px;}
+.dbar-row:last-child{margin-bottom:4px;}
+@media(max-width:720px){.dbar-row{grid-template-columns:96px 1fr 60px;}}
+.dbar-label{font-family:ui-monospace,monospace;font-size:12px;font-weight:600;
+  padding-top:3px;}
+.dbar-wrap{position:relative;padding-top:4px;}
+.dbar{height:14px;border-radius:4px;}
+.dtick{position:absolute;top:0;width:2px;height:22px;background:var(--ink);
+  opacity:.55;border-radius:1px;transform:translateX(-1px);}
+.dlabels{display:flex;justify-content:space-between;
+  font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:11px;color:var(--muted);margin-top:4px;}
+.dbar-meta{font-family:ui-monospace,monospace;font-size:11px;
+  color:var(--muted);text-align:right;padding-top:3px;}
+.dbar-empty{font-size:12px;color:var(--muted);padding-top:3px;}
 .missing{font-size:12px;color:var(--muted);}
 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
@@ -312,39 +358,36 @@ def render_html(
     missing_html = (f'<div class="missing">not counted: {_esc(", ".join(missing))} '
                     f'(weights renormalized)</div>' if missing else "")
 
-    # Explicit delay stats line (scoped to the terminal when one is set):
-    # actuals from the last 2h, then forward estimates.
+    # Flight-delay gradient bars: each bucket's flights sorted by delay,
+    # colored 0 -> shared max onto green -> red (see _delay_bar_row).
     dep_reading = bundle.get("departures") or {}
     dl = ((dep_reading.get("delays_by_terminal") or {}).get(terminal)
           if terminal else dep_reading.get("delays")) or {}
-
-    def _bucket_html(st: dict, cancelled: int = 0) -> str:
-        if not st or not st.get("n"):
-            out = "no data"
-        elif not st.get("delayed_n"):
-            out = f'none of {st["n"]} late'
-        else:
-            out = (f'<b>{st["delayed_n"]}/{st["n"]}</b> &ge;15m late '
-                   f'({st["delayed_pct"]}%) &middot; median '
-                   f'<b>{st["median_delay_min"]}m</b> &middot; worst '
-                   f'{st["max_delay_min"]}m')
-        if cancelled:
-            out += f' &middot; {cancelled} cancelled'
-        return out
-
-    delays_html = ""
     dep_b = dl.get("departed") or {}
     up_b = dl.get("upcoming") or {}
+    gmax = max([0] + (dep_b.get("delays_sorted") or [])
+               + (up_b.get("delays_sorted") or []))
+    delays_html = ""
     if dep_b.get("n") or up_b.get("n"):
-        scope_txt = (f"{_esc(terminal)} " if terminal else "") + "delays"
+        rows = (
+            _delay_bar_row("took off last 2h", dep_b, gmax, "")
+            + _delay_bar_row("next 3h (est)", up_b, gmax,
+                             f'{up_b["cancelled"]} cxl'
+                             if up_b.get("cancelled") else "")
+        )
+        scope_txt = f"&middot; {_esc(terminal)} departures" if terminal \
+            else "&middot; departures"
         delays_html = (
-            f'<div class="delayline" title="Took off = actual departure vs '
-            f'schedule for flights that left in the last 2 hours (ground '
-            f'truth). Next 3h = airline estimates, which skew optimistic. '
-            f'15 min is the standard cutoff.">'
-            f'{scope_txt} &mdash; took off last 2h: {_bucket_html(dep_b)}'
-            f' &nbsp;&middot;&nbsp; next 3h (est): '
-            f'{_bucket_html(up_b, up_b.get("cancelled") or 0)}</div>')
+            f'<div class="card delayscard" title="Each bar: flights sorted by '
+            f'delay, left (least) to right (most). Color = delay minutes on a '
+            f'shared 0..max scale, green to red. Took off = actual vs schedule '
+            f'for the last 2 hours; next 3h = airline estimates, which skew '
+            f'optimistic.">'
+            f'<div class="card-title">Flight delays <span class="dim">'
+            f'{scope_txt}</span></div>{rows}'
+            f'<div class="legend">flights sorted by delay &middot; color = '
+            f'delay, <b>0m</b> green &rarr; <b>max</b> red (shared scale) '
+            f'&middot; ticks at min / median / max</div></div>')
 
     # Trends
     ap_scores = [r.get("score") for r in airport_hist]
@@ -392,10 +435,11 @@ def render_html(
       <span class="bandpill" style="background:{band_color}"
         title="Bands: quiet &lt;20 &middot; light &lt;40 &middot; moderate &lt;60 &middot; busy &lt;80 &middot; rough 80+">{_esc(band_name)}</span>
       <div class="verdict">{_verdict(score, lng)}</div>
-      {delays_html}
       {missing_html}
     </div>
   </div>
+
+  {delays_html}
 
   <div class="grid">
     <div class="card">
