@@ -170,8 +170,12 @@ def summarize(reading: dict) -> str:
             rng = f" ~{hi}"
         else:
             rng = ""
+        # The FAA's own <Trend> on the delay record: is the delay they're
+        # imposing growing or shrinking? Unknown values are surfaced verbatim
+        # rather than silently dropped.
+        raw_trend = e.get("ad_trend") or e.get("trend")
         trend = {"Increasing": ", rising", "Decreasing": ", easing"}.get(
-            e.get("ad_trend") or e.get("trend"), "")
+            raw_trend, f", {raw_trend.lower()}" if raw_trend else "")
         reason = _friendly_reason(e.get("reason"))
         parts.append(f"{what}{rng}{trend}" + (f" ({reason})" if reason else ""))
     return "FAA: " + "; ".join(parts)
