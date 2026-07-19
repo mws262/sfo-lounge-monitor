@@ -42,13 +42,8 @@ def build_payload(bundle: dict, prev_history: list[dict],
         {"key": "security", "label": "Security",
          "score": subs.get("security"), "value": vals["security"],
          "summary": security.summarize(bundle.get("security") or {}, terminal)},
-        {"key": "gdp", "label": "FAA delays",
-         "score": subs.get("gdp"), "value": vals["gdp"],
-         "summary": faa.summarize(bundle.get("faa") or {}),
-         "note": ("The FAA's own status for SFO: ground stops, ground delay "
-                  "programs, and traffic-management delays (miles-in-trail, "
-                  "volume). This is the declared program/cause; the Flight "
-                  "delays card shows the measured result.")},
+        # Inbound / outbound FAA delays: value + the FAA's own trend arrow.
+        *faa.direction_rows(bundle.get("faa") or {}),
         {"key": "approach", "label": "Approach",
          "score": subs.get("approach"), "value": vals["approach"],
          "summary": approach.summarize(bundle.get("approach") or {})},

@@ -80,21 +80,36 @@ def _esc(s: Any) -> str:
 # --------------------------------------------------------------------------- #
 # Fragments
 # --------------------------------------------------------------------------- #
+_TREND_COLOR = {"up": "#d64545", "down": "#2fa76a"}
+_TREND_ARROW = {"up": "&uarr;", "down": "&darr;"}
+
+
 def _stat_row(label: str, score: float | None, value: str,
-              summary: str, note: str = "") -> str:
-    """Label + plain colored number (no bar), with the raw detail beneath."""
+              summary: str = "", note: str = "",
+              trend: dict | None = None) -> str:
+    """Label + optional trend + plain colored number (no bar).
+
+    Rising delays get a red up arrow, falling ones a green down arrow -- the
+    direction of change, independent of the value's severity color.
+    """
     color = _sev_color(score)
     tip = note or "Colored by severity: green = good, red = bad."
     dim = ' data-dim="1"' if value == "n/a" else ""
+    trend_html = ""
+    if trend:
+        d = trend.get("dir", "")
+        trend_html = (
+            f'<span class="sig-trend" style="color:{_TREND_COLOR.get(d, _MUTED)}">'
+            f'{_TREND_ARROW.get(d, "")} {_esc(trend.get("word", ""))}</span>')
+    sum_html = f'<div class="sig-sum">{_esc(summary)}</div>' if summary else ""
     return (
         f'<div class="sig"{dim}>'
         f'<div class="sig-head">'
         f'<span class="sig-label">{_esc(label)}</span>'
+        f'{trend_html}'
         f'<span class="sig-val" style="color:{color}" title="{_esc(tip)}">'
         f'{_esc(value)}</span>'
-        f'</div>'
-        f'<div class="sig-sum">{_esc(summary)}</div>'
-        f'</div>'
+        f'</div>{sum_html}</div>'
     )
 
 
@@ -317,8 +332,11 @@ body{background:var(--bg);color:var(--ink);
 .sig{margin-bottom:16px;}
 .sig:last-child{margin-bottom:0;}
 .sig[data-dim="1"]{opacity:.5;}
-.sig-head{display:flex;align-items:baseline;gap:8px;}
+.sig-head{display:flex;align-items:baseline;gap:10px;}
 .sig-label{font-family:ui-monospace,monospace;font-size:13px;font-weight:600;}
+/* Two auto margins split the free space: label | trend | value. */
+.sig-trend{margin-left:auto;font-family:ui-monospace,monospace;font-size:12px;
+  font-weight:600;white-space:nowrap;}
 .sig-val{margin-left:auto;font-family:ui-monospace,monospace;
   font-variant-numeric:tabular-nums;font-size:19px;font-weight:700;}
 .sig-sum{font-size:12px;color:var(--muted);margin-top:3px;}
@@ -379,19 +397,17 @@ def render_html(
     # measured delays live on the Flight delays card, not here.
     from . import security, faa, approach, drive
     vals = signal_stats(bundle, terminal)
-    rows = [
-        ("Security", subs.get("security"), vals["security"],
-         security.summarize(bundle.get("security") or {}, terminal), ""),
-        ("FAA delays", subs.get("gdp"), vals["gdp"],
-         faa.summarize(bundle.get("faa") or {}),
-         "The FAA's declared programs/delays for SFO; the Flight delays card "
-         "shows the measured result."),
-        ("Approach", subs.get("approach"), vals["approach"],
-         approach.summarize(bundle.get("approach") or {}), ""),
-        ("Drive", subs.get("drive"), vals["drive"],
-         drive.summarize(bundle.get("drive") or {}), ""),
-    ]
-    bars = "".join(_stat_row(*row) for row in rows)
+    parts = [_stat_row("Security", subs.get("security"), vals["security"],
+                       security.summarize(bundle.get("security") or {}, terminal))]
+    # Inbound / outbound FAA delays, each with its own trend arrow.
+    for r in faa.direction_rows(bundle.get("faa") or {}):
+        parts.append(_stat_row(r["label"], r["score"], r["value"],
+                               note=r["note"], trend=r["trend"]))
+    parts.append(_stat_row("Approach", subs.get("approach"), vals["approach"],
+                           approach.summarize(bundle.get("approach") or {})))
+    parts.append(_stat_row("Drive", subs.get("drive"), vals["drive"],
+                           drive.summarize(bundle.get("drive") or {})))
+    bars = "".join(parts)
 
     # Flight-delay gradient bars: each bucket's flights sorted by delay,
     # colored 0 -> shared max onto green -> red (see _delay_bar_row).

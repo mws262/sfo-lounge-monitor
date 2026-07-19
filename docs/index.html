@@ -83,8 +83,11 @@ body{background:var(--bg);color:var(--ink);
 .sig{margin-bottom:16px;}
 .sig:last-child{margin-bottom:0;}
 .sig.na{opacity:.5;}
-.sig-head{display:flex;align-items:baseline;gap:8px;}
+.sig-head{display:flex;align-items:baseline;gap:10px;}
 .sig-label{font-family:ui-monospace,monospace;font-size:13px;font-weight:600;}
+/* Two auto margins split the free space: label | trend | value. */
+.sig-trend{margin-left:auto;font-family:ui-monospace,monospace;font-size:12px;
+  font-weight:600;white-space:nowrap;}
 .sig-val{margin-left:auto;font-family:ui-monospace,monospace;
   font-variant-numeric:tabular-nums;font-size:19px;font-weight:700;}
 .sig-sum{font-size:12px;color:var(--muted);margin-top:3px;}
@@ -469,6 +472,9 @@ function renderAirport(d){
   fa.className = "mono" + (mins > STALE_AIR_MIN ? " stale" : "");
 
   // Plain stat rows: the real number, colored by severity. No bars/weights.
+  // Rising delays get a red up arrow, falling ones a green down arrow.
+  const TREND_COLOR = {up: "#d64545", down: "#2fa76a"};
+  const TREND_ARROW = {up: "↑", down: "↓"};
   const sig = $("signals");
   sig.textContent = "";
   for(const s of (d.signals || [])){
@@ -478,14 +484,24 @@ function renderAirport(d){
     const head = document.createElement("div"); head.className = "sig-head";
     const lab = document.createElement("span"); lab.className = "sig-label";
     lab.textContent = s.label;
+    head.append(lab);
+    if(s.trend){
+      const tr = document.createElement("span"); tr.className = "sig-trend";
+      tr.style.color = TREND_COLOR[s.trend.dir] || MUTED;
+      tr.textContent = (TREND_ARROW[s.trend.dir] || "") + " " + s.trend.word;
+      head.append(tr);
+    }
     const val = document.createElement("span"); val.className = "sig-val";
     val.style.color = sevColor(s.score);
     val.textContent = value;
     val.title = s.note || "Colored by severity: green = good, red = bad.";
-    head.append(lab, val);
-    const sum = document.createElement("div"); sum.className = "sig-sum";
-    sum.textContent = s.summary || "";
-    row.append(head, sum);
+    head.append(val);
+    row.append(head);
+    if(s.summary){
+      const sum = document.createElement("div"); sum.className = "sig-sum";
+      sum.textContent = s.summary;
+      row.append(sum);
+    }
     sig.append(row);
   }
 

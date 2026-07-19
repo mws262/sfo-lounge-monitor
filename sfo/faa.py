@@ -143,6 +143,105 @@ def _mins(v: str | None) -> str | None:
     return f"{m}m" if m is not None else None
 
 
+# --------------------------------------------------------------------------- #
+# Per-direction rows (inbound / outbound)
+# --------------------------------------------------------------------------- #
+_TREND_DISPLAY = {"Increasing": ("Rising", "up"), "Decreasing": ("Falling", "down")}
+
+
+def direction_delays(reading: dict) -> dict[str, dict | None]:
+    """Split SFO's active delays into inbound (Arrival) / outbound (Departure).
+
+    Ground stops and Ground Delay Programs meter traffic *bound for* SFO --
+    flights are held at their origin airports -- so a program that arrives
+    without an explicit direction is filed as inbound.
+    """
+    out: dict[str, dict | None] = {"Arrival": None, "Departure": None}
+    if not reading.get("ok"):
+        return out
+    for e in reading.get("events", []):
+        cat = e.get("category", "")
+        info = {
+            "min": _to_minutes(e.get("ad_min") or e.get("min")),
+            "max": _to_minutes(e.get("ad_max") or e.get("max")
+                               or e.get("ad_avg") or e.get("avg")),
+            "trend": e.get("ad_trend") or e.get("trend"),
+            "reason": _friendly_reason(e.get("reason")),
+            "stop": "Ground Stop" in cat,
+            "closed": "Closure" in cat,
+            "program": "Ground Delay" in cat or "Delay Program" in cat,
+        }
+        d = e.get("ad_type")
+        if d not in ("Arrival", "Departure"):
+            d = "Arrival"  # direction-less programs meter inbound traffic
+        out[d] = info
+    return out
+
+
+def direction_value(info: dict | None) -> str:
+    """The number shown on a direction row."""
+    if not info:
+        return "none"
+    if info.get("closed"):
+        return "CLOSED"
+    if info.get("stop"):
+        return "STOP"
+    lo, hi = info.get("min"), info.get("max")
+    if lo and hi and lo != hi:
+        return f"{lo}-{hi}m"
+    if hi:
+        return f"~{hi}m"
+    return "active" if info.get("program") else "none"
+
+
+def direction_score(info: dict | None) -> float:
+    """0..100 severity for coloring a direction row."""
+    if not info:
+        return 0.0
+    if info.get("stop") or info.get("closed"):
+        return 100.0
+    hi = info.get("max") or info.get("min")
+    base = common.linscale(hi, 0, 60) if hi else 0.0
+    return common.clamp(max(base, 55.0) if info.get("program") else base)
+
+
+def direction_trend(info: dict | None) -> dict | None:
+    """{'word': 'Rising', 'dir': 'up'} -- the FAA's own trend assessment."""
+    if not info or not info.get("trend"):
+        return None
+    raw = info["trend"]
+    word, arrow = _TREND_DISPLAY.get(raw, (raw.capitalize(), ""))
+    return {"word": word, "dir": arrow}
+
+
+def direction_rows(reading: dict) -> list[dict]:
+    """Ready-to-render inbound/outbound rows for the Airport status card."""
+    dd = direction_delays(reading)
+    rows = []
+    for key, label, d, who in (
+        ("faa_in", "FAA Inbound Delay", "Arrival", "into"),
+        ("faa_out", "FAA Outbound Delay", "Departure", "out of"),
+    ):
+        info = dd.get(d)
+        note = f"FAA-declared delay for flights {who} SFO."
+        if info and info.get("reason"):
+            note += f" Cause: {info['reason']}."
+        if info and info.get("trend"):
+            note += (" Rising/Falling is the FAA's own read on whether that "
+                     "delay is growing or winding down.")
+        if not reading.get("ok"):
+            note = f"FAA feed unavailable ({reading.get('error')})."
+        rows.append({
+            "key": key,
+            "label": label,
+            "value": direction_value(info) if reading.get("ok") else "n/a",
+            "score": direction_score(info) if reading.get("ok") else None,
+            "trend": direction_trend(info),
+            "note": note,
+        })
+    return rows
+
+
 def summarize(reading: dict) -> str:
     if not reading.get("ok"):
         return f"FAA: unavailable ({reading.get('error')})"
