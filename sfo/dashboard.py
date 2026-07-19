@@ -43,6 +43,14 @@ def _band_color(v: float | None) -> str:
     return "#d64545"
 
 
+def _delay_trend_color(minutes: int | None) -> str:
+    """Delay severity for the trend line: 0m green -> 60m+ red."""
+    if minutes is None:
+        return "#f5a524"
+    t = min(1.0, minutes / 60)
+    return f"hsl({round(120 * (1 - t))},65%,45%)"
+
+
 def _esc(s: Any) -> str:
     return html.escape(str(s), quote=True)
 
@@ -457,16 +465,21 @@ def render_html(
             f'= on time &middot; delays <b>yellow</b> &rarr; <b>red</b> at max '
             f'(shared scale) &middot; tick marks median of late flights</div></div>')
 
-    # Trends
-    ap_scores = [r.get("score") for r in airport_hist]
+    # Trends: median departure delay (rearward) + lounge queue.
+    from . import departures as _departures
+    ap_delays = [r.get("delay_median") for r in airport_hist]
     lounge_q = [r.get("numWaiting") for r in lounge_hist]
-    ap_now = f'{round(score)}' if score is not None else "&mdash;"
+    now_med = _departures.median_departed_delay(
+        bundle.get("departures") or {}, terminal)
+    med_txt = f"{now_med}m" if now_med is not None else "&mdash;"
     lq_now = lng.get("numWaiting")
     lq_now_txt = str(lq_now) if lq_now is not None else "&mdash;"
+    n_delays = sum(1 for v in ap_delays if v is not None)
     trends = (
-        '<div class="card"><div class="trend-title"><span>Airport score '
-        f'&middot; last {len(ap_scores)}</span><span class="trend-now mono">'
-        f'{ap_now}</span></div>{_sparkline(ap_scores, color=band_color)}</div>'
+        '<div class="card"><div class="trend-title"><span>Median departure '
+        f'delay &middot; {n_delays} samples</span><span class="trend-now mono">'
+        f'{med_txt}</span></div>'
+        f'{_sparkline(ap_delays, color=_delay_trend_color(now_med))}</div>'
         '<div class="card"><div class="trend-title"><span>Lounge queue '
         f'&middot; last {len(lounge_q)}</span><span class="trend-now mono">'
         f'{lq_now_txt}</span></div>{_sparkline(lounge_q)}</div>'

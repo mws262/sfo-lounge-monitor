@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS airport (
     approach REAL,
     delays REAL,
     drive REAL,
+    delay_median REAL,
     raw TEXT
 )
 """
@@ -57,7 +58,7 @@ def connect(path: str = DEFAULT_DB) -> sqlite3.Connection:
     conn.execute(_AIRPORT_DDL)
     # Migrations: add columns to airport tables created before a signal existed.
     # (fog is retained for historical rows even though it's no longer scored.)
-    for col in ("approach REAL", "delays REAL"):
+    for col in ("approach REAL", "delays REAL", "delay_median REAL"):
         try:
             conn.execute(f"ALTER TABLE airport ADD COLUMN {col}")
         except sqlite3.OperationalError:
@@ -99,6 +100,7 @@ def log_airport(
     subscores: dict,
     detail: dict[str, Any],
     ts: str | None = None,
+    delay_median: int | None = None,
 ) -> str:
     from .score import band
 
@@ -106,8 +108,8 @@ def log_airport(
     conn.execute(
         """INSERT OR REPLACE INTO airport
            (ts, score, band, security, fog, departures, gdp, approach, delays,
-            drive, raw)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            drive, delay_median, raw)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             ts,
             comp.get("score"),
@@ -119,6 +121,7 @@ def log_airport(
             subscores.get("approach"),
             subscores.get("delays"),
             subscores.get("drive"),
+            delay_median,
             json.dumps(_jsonable(detail)),
         ),
     )
@@ -140,10 +143,11 @@ def recent_airport(conn: sqlite3.Connection, limit: int = 240) -> list[dict]:
     """Most recent airport rows, oldest-first (for trend charts)."""
     rows = conn.execute(
         "SELECT ts, score, band, security, fog, departures, gdp, approach, "
-        "delays, drive FROM airport ORDER BY ts DESC LIMIT ?", (limit,)
+        "delays, drive, delay_median FROM airport ORDER BY ts DESC LIMIT ?",
+        (limit,)
     ).fetchall()
     cols = ("ts", "score", "band", "security", "fog", "departures", "gdp",
-            "approach", "delays", "drive")
+            "approach", "delays", "drive", "delay_median")
     return [dict(zip(cols, r)) for r in reversed(rows)]
 
 

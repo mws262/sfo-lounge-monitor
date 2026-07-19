@@ -315,6 +315,25 @@ def delay_score(reading: dict, terminal: str | None = None) -> float | None:
     return common.clamp(0.55 * pct + 0.45 * common.linscale(med, 15, 75))
 
 
+def median_departed_delay(reading: dict, terminal: str | None = None) -> int | None:
+    """Median delay (min) across ALL recently-departed flights (on-time = 0).
+
+    Rearward-looking: the last-2h actuals. Unlike the bars' median (late
+    flights only), this is over the whole departed population, so it tracks
+    overall delay severity over time -- 0 when things are clean, rising as more
+    flights slip. None when nothing has departed recently.
+    """
+    if not reading.get("ok"):
+        return None
+    stats = ((reading.get("delays_by_terminal") or {}).get(terminal)
+             if terminal else reading.get("delays")) or {}
+    arr = (stats.get("departed") or {}).get("delays_sorted") or []
+    if not arr:
+        return None
+    n = len(arr)
+    return arr[n // 2] if n % 2 else round((arr[n // 2 - 1] + arr[n // 2]) / 2)
+
+
 def delay_signal_summary(reading: dict, terminal: str | None = None) -> str:
     """One-line summary for the Delays signal row (the scoring bucket)."""
     if not reading.get("ok"):

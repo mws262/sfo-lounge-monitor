@@ -67,6 +67,7 @@ def build_payload(bundle: dict, prev_history: list[dict],
     entry = {
         "ts": now_utc,
         "score": comp.get("score"),
+        "delay_median": departures.median_departed_delay(dep, terminal),
         "lounge_state": lng.get("state") if lng.get("ok") is not False else None,
         "lounge_waiting": lng.get("numWaiting") if lng.get("ok") is not False else None,
     }

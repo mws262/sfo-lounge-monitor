@@ -122,6 +122,8 @@ def _log(conn, bundle: dict) -> None:
             conn, bundle["composite"], bundle["subscores"],
             {k: bundle.get(k) for k in
              ("security", "faa", "departures", "approach", "drive")},
+            delay_median=departures.median_departed_delay(
+                bundle.get("departures") or {}, bundle.get("terminal")),
         )
 
 
