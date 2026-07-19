@@ -19,7 +19,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-from . import approach, departures, drive, faa, metar, security
+from . import approach, departures, drive, faa, security
 from .cli import gather
 from .config import Config
 from .score import WEIGHTS, band
@@ -37,10 +37,10 @@ def build_payload(bundle: dict, prev_history: list[dict],
         {"key": "security", "label": "Security", "weight": WEIGHTS["security"][0],
          "score": subs.get("security"),
          "summary": security.summarize(bundle.get("security") or {}, terminal)},
-        {"key": "fog", "label": "Fog", "weight": WEIGHTS["fog"][0],
-         "score": subs.get("fog"),
-         "summary": metar.summarize(bundle.get("weather") or {}),
-         "note": metar.SCALE_NOTE},
+        {"key": "delays", "label": "Delays", "weight": WEIGHTS["delays"][0],
+         "score": subs.get("delays"),
+         "summary": departures.delay_signal_summary(bundle.get("departures") or {}, terminal),
+         "note": departures.DELAY_SIGNAL_NOTE},
         # Departures still contributes to the composite (subscores/gather),
         # but is intentionally omitted from the visible signal list -- the
         # flight-delay bars carry the departure story on their own card.

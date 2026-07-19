@@ -16,7 +16,7 @@ import json
 import sys
 import time
 
-from . import approach, common, departures, faa, lounge, metar, drive, security, store
+from . import approach, common, departures, faa, lounge, drive, security, store
 from .config import Config
 from .score import band, composite
 
@@ -43,7 +43,6 @@ def gather(
         return bundle
 
     sec = _safe(security.fetch)
-    wx = _safe(metar.fetch)
     fa = _safe(faa.fetch)
     dep = _safe(departures.fetch, cfg, cache_dir=cache_dir, cache_ttl=board_ttl)
     app = _safe(approach.fetch, cfg)
@@ -51,7 +50,7 @@ def gather(
 
     subscores = {
         "security": security.score(sec, terminal),
-        "fog": metar.score(wx),
+        "delays": departures.delay_score(dep, terminal),
         "departures": departures.score(dep, terminal),
         "gdp": faa.score(fa),
         "approach": approach.score(app),
@@ -59,7 +58,7 @@ def gather(
     }
     comp = composite(subscores)
     bundle.update({
-        "security": sec, "weather": wx, "faa": fa, "departures": dep,
+        "security": sec, "faa": fa, "departures": dep,
         "approach": app, "drive": drv,
         "subscores": subscores, "composite": comp, "terminal": terminal,
     })
@@ -74,7 +73,7 @@ def render(bundle: dict, terminal: str | None) -> str:
         head = f"SFO right now: {sc if sc is not None else '?'}/100 ({band(sc)})"
         lines.append(head)
         lines.append("  " + security.summarize(bundle["security"], terminal))
-        lines.append("  " + metar.summarize(bundle["weather"]))
+        lines.append("  " + departures.delay_signal_summary(bundle["departures"], terminal))
         lines.append("  " + faa.summarize(bundle["faa"]))
         dep = bundle["departures"]
         if dep.get("ok"):
@@ -122,7 +121,7 @@ def _log(conn, bundle: dict) -> None:
         store.log_airport(
             conn, bundle["composite"], bundle["subscores"],
             {k: bundle.get(k) for k in
-             ("security", "weather", "faa", "departures", "approach", "drive")},
+             ("security", "faa", "departures", "approach", "drive")},
         )
 
 

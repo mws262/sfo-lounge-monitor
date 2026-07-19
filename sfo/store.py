@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS airport (
     departures REAL,
     gdp REAL,
     approach REAL,
+    delays REAL,
     drive REAL,
     raw TEXT
 )
@@ -54,11 +55,13 @@ def connect(path: str = DEFAULT_DB) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.execute(_STATUS_DDL)
     conn.execute(_AIRPORT_DDL)
-    # Migration: DBs created before the approach signal lack its column.
-    try:
-        conn.execute("ALTER TABLE airport ADD COLUMN approach REAL")
-    except sqlite3.OperationalError:
-        pass  # already present
+    # Migrations: add columns to airport tables created before a signal existed.
+    # (fog is retained for historical rows even though it's no longer scored.)
+    for col in ("approach REAL", "delays REAL"):
+        try:
+            conn.execute(f"ALTER TABLE airport ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass  # already present
     conn.commit()
     return conn
 
@@ -102,8 +105,9 @@ def log_airport(
     ts = ts or common.iso_local()
     conn.execute(
         """INSERT OR REPLACE INTO airport
-           (ts, score, band, security, fog, departures, gdp, approach, drive, raw)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+           (ts, score, band, security, fog, departures, gdp, approach, delays,
+            drive, raw)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (
             ts,
             comp.get("score"),
@@ -113,6 +117,7 @@ def log_airport(
             subscores.get("departures"),
             subscores.get("gdp"),
             subscores.get("approach"),
+            subscores.get("delays"),
             subscores.get("drive"),
             json.dumps(_jsonable(detail)),
         ),
@@ -134,11 +139,11 @@ def last_lounge(conn: sqlite3.Connection) -> dict | None:
 def recent_airport(conn: sqlite3.Connection, limit: int = 240) -> list[dict]:
     """Most recent airport rows, oldest-first (for trend charts)."""
     rows = conn.execute(
-        "SELECT ts, score, band, security, fog, departures, gdp, approach, drive "
-        "FROM airport ORDER BY ts DESC LIMIT ?", (limit,)
+        "SELECT ts, score, band, security, fog, departures, gdp, approach, "
+        "delays, drive FROM airport ORDER BY ts DESC LIMIT ?", (limit,)
     ).fetchall()
     cols = ("ts", "score", "band", "security", "fog", "departures", "gdp",
-            "approach", "drive")
+            "approach", "delays", "drive")
     return [dict(zip(cols, r)) for r in reversed(rows)]
 
 

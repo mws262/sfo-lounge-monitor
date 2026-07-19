@@ -353,20 +353,21 @@ def render_html(
     lng = bundle.get("lounge") or {}
 
     # Signal rows (label, subscore-key, human summary from the module).
-    from . import security, metar, faa, approach, drive
+    from . import security, departures, faa, approach, drive
     rows = [
         ("security", subs.get("security"),
          security.summarize(bundle.get("security") or {}, terminal)),
-        ("fog", subs.get("fog"), metar.summarize(bundle.get("weather") or {})),
-        # Departures still scores into the composite, but is intentionally
-        # not listed here -- the flight-delay bars carry the departure story.
+        ("delays", subs.get("delays"),
+         departures.delay_signal_summary(bundle.get("departures") or {}, terminal)),
+        # Departures (volume) still scores into the composite, but is
+        # intentionally not listed here -- the flight-delay bars carry it.
         ("ground delay", subs.get("gdp"), faa.summarize(bundle.get("faa") or {})),
         ("approach", subs.get("approach"),
          approach.summarize(bundle.get("approach") or {})),
         ("drive", subs.get("drive"), drive.summarize(bundle.get("drive") or {})),
     ]
     from .score import WEIGHTS
-    wmap = {"security": WEIGHTS["security"][0], "fog": WEIGHTS["fog"][0],
+    wmap = {"security": WEIGHTS["security"][0], "delays": WEIGHTS["delays"][0],
             "departures": WEIGHTS["departures"][0], "ground delay": WEIGHTS["gdp"][0],
             "approach": WEIGHTS["approach"][0], "drive": WEIGHTS["drive"][0]}
     bars = "".join(

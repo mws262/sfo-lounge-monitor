@@ -1,5 +1,10 @@
 """KSFO weather / fog risk from the Aviation Weather Center METAR API.
 
+DORMANT as of 2026-07: the fog signal was removed from the composite after the
+FAA permanently banned SFO's side-by-side landings (see below), which made the
+weather-capacity model obsolete. Measured delays (departures.delay_score)
+replaced it. This module is retained, unwired, in case it's ever useful again.
+
 Historically this was SFO's dominant delay driver: the marine layer dropping
 the ceiling below ~3,500 ft cost the airport its side-by-side parallel
 landings, halving arrival capacity. As of spring 2026 the FAA PERMANENTLY

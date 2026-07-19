@@ -13,16 +13,17 @@ from typing import Any
 
 # component key -> (weight, label). Security replaces the dead TSA feed.
 # Weights are renormalized over whatever signals are present, so only the
-# ratios matter. Fog was de-weighted (0.20 -> 0.12) after the FAA's spring-2026
-# ban on side-by-side landings made weather a smaller marginal factor -- see
-# metar.SCALE_NOTE. GDP nudged up (it fires more often under the reduced rate).
+# ratios matter. Fog was removed entirely (the FAA's spring-2026 ban on
+# side-by-side landings made the weather-capacity model obsolete); measured
+# delays -- the actual outcome, robust to cause -- replace it as a primary
+# signal. Departure volume stays as a minor, hidden contributor.
 WEIGHTS = {
     "security": (0.35, "security"),
-    "fog": (0.12, "fog"),
-    "departures": (0.20, "departures"),
-    "gdp": (0.18, "ground-delay"),
+    "delays": (0.25, "delays"),
+    "gdp": (0.15, "ground-delay"),
+    "departures": (0.12, "departures"),
     "approach": (0.10, "approach"),
-    "drive": (0.10, "drive"),
+    "drive": (0.05, "drive"),
 }
 
 

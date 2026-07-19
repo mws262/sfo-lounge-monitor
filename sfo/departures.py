@@ -270,3 +270,60 @@ def delay_summary(st: dict) -> str:
     cxl = f", {up['cancelled']} cancelled" if up.get("cancelled") else ""
     return (f"took off last 2h: {_bucket_summary(dep)} | "
             f"next 3h est: {_bucket_summary(up)}{cxl}")
+
+
+# --------------------------------------------------------------------------- #
+# Delay as a scored composite signal (measured outcome, not a model)
+# --------------------------------------------------------------------------- #
+MIN_DELAY_SAMPLE = 3   # need a few flights before the stats mean anything
+
+DELAY_SIGNAL_NOTE = (
+    "Measured straight off the flight board: the share of recent (last 2h) "
+    "departures that ACTUALLY left >=15 min late, plus their median delay. "
+    "It's the real outcome -- robust to the cause (weather, staffing, the "
+    "side-by-side landing ban) in a way a weather model isn't. Falls back to "
+    "the next-3h estimates overnight when nothing has departed recently. See "
+    "the Flight delays card for the full distribution."
+)
+
+
+def _scoring_bucket(reading: dict, terminal: str | None) -> tuple[dict, str]:
+    """Pick the bucket to score: recent actuals if available, else estimates."""
+    stats = ((reading.get("delays_by_terminal") or {}).get(terminal)
+             if terminal else reading.get("delays")) or {}
+    for key in ("departed", "upcoming"):
+        b = stats.get(key) or {}
+        if b.get("n", 0) >= MIN_DELAY_SAMPLE:
+            return b, key
+    return {}, ""
+
+
+def delay_score(reading: dict, terminal: str | None = None) -> float | None:
+    """0..100 from measured delays: blends % of flights late with the median.
+
+    100 == every flight late by a long way. Uses actual last-2h departures when
+    there are enough of them, else the next-3h estimates.
+    """
+    if not reading.get("ok"):
+        return None
+    b, _ = _scoring_bucket(reading, terminal)
+    if not b:
+        return None
+    pct = b.get("delayed_pct") or 0
+    med = b.get("median_delay_min") or 0
+    # % late is the breadth; median (15m -> 0, 75m -> 100) is the depth.
+    return common.clamp(0.55 * pct + 0.45 * common.linscale(med, 15, 75))
+
+
+def delay_signal_summary(reading: dict, terminal: str | None = None) -> str:
+    """One-line summary for the Delays signal row (the scoring bucket)."""
+    if not reading.get("ok"):
+        return f"Delays: unavailable ({reading.get('error')})"
+    b, key = _scoring_bucket(reading, terminal)
+    if not b:
+        return "Delays: too few flights to gauge"
+    when = "last 2h actual" if key == "departed" else "next 3h est"
+    if not b.get("delayed_n"):
+        return f"Delays: {when} - all {b['n']} ~on time"
+    return (f"Delays: {when} - {b['delayed_pct']}% of {b['n']} left "
+            f">={DELAY_THRESHOLD_MIN}m late, median {b['median_delay_min']}m")
