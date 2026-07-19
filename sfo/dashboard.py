@@ -312,28 +312,39 @@ def render_html(
     missing_html = (f'<div class="missing">not counted: {_esc(", ".join(missing))} '
                     f'(weights renormalized)</div>' if missing else "")
 
-    # Explicit delay stats line (scoped to the terminal when one is set).
+    # Explicit delay stats line (scoped to the terminal when one is set):
+    # actuals from the last 2h, then forward estimates.
     dep_reading = bundle.get("departures") or {}
     dl = ((dep_reading.get("delays_by_terminal") or {}).get(terminal)
           if terminal else dep_reading.get("delays")) or {}
-    delays_html = ""
-    if dl.get("n"):
-        scope_txt = (f"{_esc(terminal)} " if terminal else "") + "flight delays"
-        if not dl.get("delayed_n"):
-            cxl = f", {dl['cancelled']} cancelled" if dl.get("cancelled") else ""
-            delays_html = (f'<div class="delayline">{scope_txt}: none among '
-                           f'{dl["n"]} flights (last 1h + next 3h){cxl}</div>')
+
+    def _bucket_html(st: dict, cancelled: int = 0) -> str:
+        if not st or not st.get("n"):
+            out = "no data"
+        elif not st.get("delayed_n"):
+            out = f'none of {st["n"]} late'
         else:
-            cxl = (f' &middot; {dl["cancelled"]} cancelled'
-                   if dl.get("cancelled") else "")
-            delays_html = (
-                f'<div class="delayline" title="Departures scheduled in the '
-                f'last hour + next 3 hours; delay = estimated/actual departure '
-                f'vs schedule. 15 min is the standard cutoff.">'
-                f'{scope_txt}: <b>{dl["delayed_n"]}/{dl["n"]}</b> flights '
-                f'&ge;15m late ({dl["delayed_pct"]}%) &middot; median '
-                f'<b>{dl["median_delay_min"]}m</b> &middot; worst '
-                f'<b>{dl["max_delay_min"]}m</b>{cxl}</div>')
+            out = (f'<b>{st["delayed_n"]}/{st["n"]}</b> &ge;15m late '
+                   f'({st["delayed_pct"]}%) &middot; median '
+                   f'<b>{st["median_delay_min"]}m</b> &middot; worst '
+                   f'{st["max_delay_min"]}m')
+        if cancelled:
+            out += f' &middot; {cancelled} cancelled'
+        return out
+
+    delays_html = ""
+    dep_b = dl.get("departed") or {}
+    up_b = dl.get("upcoming") or {}
+    if dep_b.get("n") or up_b.get("n"):
+        scope_txt = (f"{_esc(terminal)} " if terminal else "") + "delays"
+        delays_html = (
+            f'<div class="delayline" title="Took off = actual departure vs '
+            f'schedule for flights that left in the last 2 hours (ground '
+            f'truth). Next 3h = airline estimates, which skew optimistic. '
+            f'15 min is the standard cutoff.">'
+            f'{scope_txt} &mdash; took off last 2h: {_bucket_html(dep_b)}'
+            f' &nbsp;&middot;&nbsp; next 3h (est): '
+            f'{_bucket_html(up_b, up_b.get("cancelled") or 0)}</div>')
 
     # Trends
     ap_scores = [r.get("score") for r in airport_hist]

@@ -349,27 +349,30 @@ function renderAirport(d){
   lastLoungeStateFromData = d.lounge && d.lounge.state || null;
   $("verdict").textContent = verdictText(bandName, lastLoungeStateFromData);
 
-  // Explicit delay stats: portion of flights >=15m late, median, worst.
+  // Explicit delay stats: actuals from the last 2h, then forward estimates.
   const dl = d.delays, dEl = $("delays");
   dEl.textContent = "";
-  if(dl && dl.n){
-    const scopeTxt = (d.terminal ? d.terminal + " " : "") + "flight delays";
-    if(!dl.delayed_n){
-      dEl.append(scopeTxt + ": none among " + dl.n + " flights (last 1h + next 3h)"
-        + (dl.cancelled ? ", " + dl.cancelled + " cancelled" : ""));
-    }else{
-      const b = (t) => { const el = document.createElement("b");
-        el.textContent = t; return el; };
-      dEl.append(scopeTxt + ": ");
-      dEl.append(b(dl.delayed_n + "/" + dl.n));
-      dEl.append(" flights ≥15m late (" + dl.delayed_pct + "%) · median ");
-      dEl.append(b(dl.median_delay_min + "m"));
-      dEl.append(" · worst ");
-      dEl.append(b(dl.max_delay_min + "m"));
-      if(dl.cancelled) dEl.append(" · " + dl.cancelled + " cancelled");
-      dEl.title = "Departures scheduled in the last hour + next 3 hours; delay = "
-        + "estimated/actual departure vs schedule. 15 min is the standard cutoff.";
+  const bold = (t) => { const el = document.createElement("b");
+    el.textContent = t; return el; };
+  const bucket = (st, cxl) => {
+    if(!st || !st.n){ dEl.append("no data"); return; }
+    if(!st.delayed_n){ dEl.append("none of " + st.n + " late"); }
+    else{
+      dEl.append(bold(st.delayed_n + "/" + st.n));
+      dEl.append(" ≥15m late (" + st.delayed_pct + "%) · median ");
+      dEl.append(bold(st.median_delay_min + "m"));
+      dEl.append(" · worst " + st.max_delay_min + "m");
     }
+    if(cxl) dEl.append(" · " + cxl + " cancelled");
+  };
+  if(dl && ((dl.departed && dl.departed.n) || (dl.upcoming && dl.upcoming.n))){
+    dEl.append((d.terminal ? d.terminal + " " : "") + "delays — took off last 2h: ");
+    bucket(dl.departed, 0);
+    dEl.append("   ·   next 3h (est): ");
+    bucket(dl.upcoming, dl.upcoming && dl.upcoming.cancelled);
+    dEl.title = "Took off = actual departure vs schedule for flights that left in "
+      + "the last 2 hours (ground truth). Next 3h = airline estimates, which "
+      + "skew optimistic. 15 min is the standard cutoff.";
   }
   $("missing").textContent = (d.missing && d.missing.length)
     ? "not counted: " + d.missing.join(", ") + " (weights renormalized)" : "";

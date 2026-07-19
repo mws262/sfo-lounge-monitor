@@ -104,55 +104,61 @@ def _parse(t: str | None) -> datetime | None:
         return None
 
 
-# Delay-stat sample: departures scheduled in [now-1h, now+3h]. Wider than the
-# 90-min count window so the percentages aren't noise when a terminal only has
-# a dozen upcoming flights. Recently-departed flights contribute their ACTUAL
-# delay; upcoming ones their current estimate.
-DELAY_LOOKBACK_MIN = 60
-DELAY_LOOKAHEAD_MIN = 180
+# Delay stats come in two buckets with different evidentiary weight:
+#   departed -- flights that ACTUALLY took off in the last 2h (selected by
+#               actual departure time; delay = actual - scheduled). Ground
+#               truth for "how late are flights really leaving".
+#   upcoming -- flights scheduled in the next 3h (delay = current estimate -
+#               scheduled). Airline estimates skew optimistic, so treat this
+#               bucket as a floor.
+DEPARTED_LOOKBACK_MIN = 120
+UPCOMING_LOOKAHEAD_MIN = 180
 DELAY_THRESHOLD_MIN = 15  # DOT's standard "delayed" cutoff
 
 
-def _delay_minutes(r: dict) -> float | None:
-    """Actual/estimated departure minus scheduled, in minutes. None if unknown."""
-    sched = _parse(_sched(r))
-    best = _parse(r.get("actual_aod_time")) or _parse(r.get("estimated_aod_time"))
-    if not (sched and best):
-        return None
-    return max(0.0, (best - sched).total_seconds() / 60)
-
-
-def _delay_stats(deps: list[dict], ref: datetime,
-                 terminal: str | None) -> dict[str, Any]:
+def _bucket_stats(delays: list[float]) -> dict[str, Any]:
     import statistics
-
-    lo = ref - timedelta(minutes=DELAY_LOOKBACK_MIN)
-    hi = ref + timedelta(minutes=DELAY_LOOKAHEAD_MIN)
-    delays: list[float] = []
-    cancelled = 0
-    for r in deps:
-        if terminal and _terminal(r) != terminal:
-            continue
-        t = _parse(_sched(r))
-        if not (t and lo <= t <= hi):
-            continue
-        remark = (r.get("remark") or "").lower()
-        if any(h in remark for h in _CANCEL_HINTS):
-            cancelled += 1
-            continue
-        d = _delay_minutes(r)
-        if d is not None:
-            delays.append(d)
 
     late = [d for d in delays if d >= DELAY_THRESHOLD_MIN]
     n = len(delays)
     return {
         "n": n,
-        "cancelled": cancelled,
         "delayed_n": len(late),
         "delayed_pct": round(len(late) / n * 100) if n else None,
         "median_delay_min": round(statistics.median(late)) if late else None,
         "max_delay_min": round(max(late)) if late else None,
+    }
+
+
+def _delay_stats(deps: list[dict], ref: datetime,
+                 terminal: str | None) -> dict[str, Any]:
+    departed: list[float] = []
+    upcoming: list[float] = []
+    cancelled = 0
+    dep_lo = ref - timedelta(minutes=DEPARTED_LOOKBACK_MIN)
+    up_hi = ref + timedelta(minutes=UPCOMING_LOOKAHEAD_MIN)
+    for r in deps:
+        if terminal and _terminal(r) != terminal:
+            continue
+        sched = _parse(_sched(r))
+        if not sched:
+            continue
+        remark = (r.get("remark") or "").lower()
+        if any(h in remark for h in _CANCEL_HINTS):
+            if dep_lo <= sched <= up_hi:
+                cancelled += 1
+            continue
+        act = _parse(r.get("actual_aod_time"))
+        if act and dep_lo <= act <= ref:
+            departed.append(max(0.0, (act - sched).total_seconds() / 60))
+        elif ref <= sched <= up_hi:
+            est = _parse(r.get("estimated_aod_time")) or act
+            if est:
+                upcoming.append(max(0.0, (est - sched).total_seconds() / 60))
+
+    return {
+        "departed": _bucket_stats(departed),
+        "upcoming": {**_bucket_stats(upcoming), "cancelled": cancelled},
     }
 
 
@@ -243,20 +249,22 @@ def summarize(reading: dict, terminal: str | None = None) -> str:
     )
 
 
-def delay_summary(st: dict) -> str:
-    """Human line for a _delay_stats dict, e.g.
-    'delays: 8/13 >=15m (62%), median 34m, worst 95m, 1 cxl'."""
+def _bucket_summary(st: dict) -> str:
+    """'8/20 >=15m, median 26m, worst 102m' or 'none of 20 late'."""
     if not st or not st.get("n"):
-        return "delays: no data"
+        return "no data"
     if not st.get("delayed_n"):
-        cxl = f", {st['cancelled']} cxl" if st.get("cancelled") else ""
-        return f"delays: none of {st['n']} flights{cxl}"
-    bits = [
-        f"delays: {st['delayed_n']}/{st['n']} >={DELAY_THRESHOLD_MIN}m "
-        f"({st['delayed_pct']}%)",
-        f"median {st['median_delay_min']}m",
-        f"worst {st['max_delay_min']}m",
-    ]
-    if st.get("cancelled"):
-        bits.append(f"{st['cancelled']} cxl")
-    return ", ".join(bits)
+        return f"none of {st['n']} late"
+    return (f"{st['delayed_n']}/{st['n']} >={DELAY_THRESHOLD_MIN}m, "
+            f"median {st['median_delay_min']}m, worst {st['max_delay_min']}m")
+
+
+def delay_summary(st: dict) -> str:
+    """Human line for a _delay_stats dict (departed/upcoming buckets)."""
+    if not st:
+        return "delays: no data"
+    dep = st.get("departed") or {}
+    up = st.get("upcoming") or {}
+    cxl = f", {up['cancelled']} cxl" if up.get("cancelled") else ""
+    return (f"took off last 2h: {_bucket_summary(dep)} | "
+            f"next 3h est: {_bucket_summary(up)}{cxl}")
