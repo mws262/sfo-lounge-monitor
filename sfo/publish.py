@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from . import approach, departures, drive, faa, security
 from .cli import gather
 from .config import Config
-from .score import WEIGHTS, band
+from .score import band
 
 HISTORY_KEEP = 504  # 7 days at a 20-min cadence
 
@@ -33,29 +33,27 @@ def build_payload(bundle: dict, prev_history: list[dict],
     comp = bundle.get("composite") or {}
     lng = bundle.get("lounge") or {}
 
+    # Plain stat entries: `value` is the real number shown; `score` is the
+    # internal 0..100 severity used only to color it. No composite on display,
+    # no weights; measured delays live on the Flight delays card instead.
+    from .dashboard import signal_stats
+    vals = signal_stats(bundle, terminal)
     signals = [
-        {"key": "security", "label": "Security", "weight": WEIGHTS["security"][0],
-         "score": subs.get("security"),
+        {"key": "security", "label": "Security",
+         "score": subs.get("security"), "value": vals["security"],
          "summary": security.summarize(bundle.get("security") or {}, terminal)},
-        {"key": "delays", "label": "Delays", "weight": WEIGHTS["delays"][0],
-         "score": subs.get("delays"),
-         "summary": departures.delay_signal_summary(bundle.get("departures") or {}, terminal),
-         "note": departures.DELAY_SIGNAL_NOTE},
-        # Departures still contributes to the composite (subscores/gather),
-        # but is intentionally omitted from the visible signal list -- the
-        # flight-delay bars carry the departure story on their own card.
-        {"key": "gdp", "label": "FAA delays", "weight": WEIGHTS["gdp"][0],
-         "score": subs.get("gdp"),
+        {"key": "gdp", "label": "FAA delays",
+         "score": subs.get("gdp"), "value": vals["gdp"],
          "summary": faa.summarize(bundle.get("faa") or {}),
          "note": ("The FAA's own status for SFO: ground stops, ground delay "
                   "programs, and traffic-management delays (miles-in-trail, "
-                  "volume). This is the declared program/cause; the Delays "
-                  "signal above is the measured result.")},
-        {"key": "approach", "label": "Approach", "weight": WEIGHTS["approach"][0],
-         "score": subs.get("approach"),
+                  "volume). This is the declared program/cause; the Flight "
+                  "delays card shows the measured result.")},
+        {"key": "approach", "label": "Approach",
+         "score": subs.get("approach"), "value": vals["approach"],
          "summary": approach.summarize(bundle.get("approach") or {})},
-        {"key": "drive", "label": "Drive", "weight": WEIGHTS["drive"][0],
-         "score": subs.get("drive"),
+        {"key": "drive", "label": "Drive",
+         "score": subs.get("drive"), "value": vals["drive"],
          "summary": drive.summarize(bundle.get("drive") or {})},
     ]
 

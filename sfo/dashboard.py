@@ -2,8 +2,9 @@
 
 Design: a split-flap departure-board vernacular -- monospace data, amber accent,
 cool night-tarmac slate -- but pitched as a scan-and-operate ops panel, not a
-document. Summary first (composite score + verdict), then the signal breakdown,
-the lounge, and trend sparklines.
+document. Flight-delay bars first, then plain airport stats (real numbers,
+colored by severity -- the composite score is computed internally but not
+displayed), the lounge, and trend sparklines.
 
 The output is one static HTML string with everything inlined (no external CSS,
 JS, fonts, or images), so it can be written to a file and served from anywhere.
@@ -13,16 +14,6 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from .score import band
-
-# Semantic band scale (0..100 busyness). Hues legible on both grounds.
-_BANDS = [
-    (20, "quiet", "#2fa76a"),
-    (40, "light", "#7aa63c"),
-    (60, "moderate", "#d99a2b"),
-    (80, "busy", "#e2792e"),
-    (101, "rough", "#d64545"),
-]
 _MUTED = "#8b93a1"
 
 _LOUNGE_COLORS = {
@@ -34,21 +25,52 @@ _LOUNGE_COLORS = {
 }
 
 
-def _band_color(v: float | None) -> str:
-    if v is None:
-        return _MUTED
-    for hi, _name, color in _BANDS:
-        if v < hi:
-            return color
-    return "#d64545"
-
-
 def _delay_trend_color(minutes: int | None) -> str:
     """Delay severity for the trend line: 0m green -> 60m+ red."""
     if minutes is None:
         return "#f5a524"
     t = min(1.0, minutes / 60)
     return f"hsl({round(120 * (1 - t))},65%,45%)"
+
+
+def _sev_color(score: float | None) -> str:
+    """Continuous severity color from an internal 0..100 score: green -> red."""
+    if score is None:
+        return _MUTED
+    t = min(1.0, max(0.0, score / 100))
+    return f"hsl({round(120 * (1 - t))},65%,42%)"
+
+
+def signal_stats(bundle: dict, terminal: str | None = None) -> dict[str, str]:
+    """Plain display numbers for the stat rows (no composite involved)."""
+    from . import security, faa as _faa
+    sec = bundle.get("security") or {}
+    fa = bundle.get("faa") or {}
+    ap = bundle.get("approach") or {}
+    dr = bundle.get("drive") or {}
+
+    m = security.best_general_min(sec, terminal)
+    sec_val = f"{m}m" if m is not None else "n/a"
+
+    if not fa.get("ok"):
+        faa_val = "n/a"
+    elif fa.get("ground_stop"):
+        faa_val = "STOP"
+    elif fa.get("closure"):
+        faa_val = "CLOSED"
+    else:
+        mm = _faa._max_delay_minutes(fa.get("events") or [])
+        faa_val = f"{mm}m" if mm else "none"
+
+    if ap.get("ok"):
+        r = ap.get("worst_ratio")
+        app_val = "clear" if (r or 1.0) < 1.15 else f"+{round((r - 1) * 100)}%"
+    else:
+        app_val = "n/a"
+
+    drv_val = f"{dr.get('minutes')}m" if dr.get("ok") else "n/a"
+    return {"security": sec_val, "gdp": faa_val,
+            "approach": app_val, "drive": drv_val}
 
 
 def _esc(s: Any) -> str:
@@ -58,31 +80,19 @@ def _esc(s: Any) -> str:
 # --------------------------------------------------------------------------- #
 # Fragments
 # --------------------------------------------------------------------------- #
-_WT_TIP = ("Weight: this signal's share of the headline score. Unavailable "
-           "signals are dropped and the remaining weights renormalize.")
-_VAL_TIP = ("This signal now, on a 0 (clear) to 100 (rough) scale. The grey "
-            "line below shows the raw reading it was computed from.")
-
-
-def _signal_bar(label: str, value: float | None, weight: float | None,
-                summary: str) -> str:
-    color = _band_color(value)
-    pct = 0 if value is None else max(2, min(100, value))
-    val_txt = "n/a" if value is None else f"{round(value)}"
-    val_tip = ("No data right now - not counted in the headline score"
-               if value is None else _VAL_TIP)
-    wt_txt = f"wt {round(weight * 100)}%" if weight else "&mdash;"
-    dim = ' data-dim="1"' if value is None else ""
+def _stat_row(label: str, score: float | None, value: str,
+              summary: str, note: str = "") -> str:
+    """Label + plain colored number (no bar), with the raw detail beneath."""
+    color = _sev_color(score)
+    tip = note or "Colored by severity: green = good, red = bad."
+    dim = ' data-dim="1"' if value == "n/a" else ""
     return (
         f'<div class="sig"{dim}>'
         f'<div class="sig-head">'
         f'<span class="sig-label">{_esc(label)}</span>'
-        f'<span class="sig-weight" title="{_esc(_WT_TIP)}">{wt_txt}</span>'
-        f'<span class="sig-val" style="color:{color}" title="{_esc(val_tip)}">'
-        f'{val_txt}</span>'
+        f'<span class="sig-val" style="color:{color}" title="{_esc(tip)}">'
+        f'{_esc(value)}</span>'
         f'</div>'
-        f'<div class="track"><div class="fill" style="width:{pct}%;'
-        f'background:{color}"></div></div>'
         f'<div class="sig-sum">{_esc(summary)}</div>'
         f'</div>'
     )
@@ -235,29 +245,6 @@ def _lounge_card(lng: dict, sec_wait_min: int | None = None) -> str:
     )
 
 
-def _verdict(score: float | None, lng: dict) -> str:
-    b = band(score)
-    airport = {
-        "quiet": "Smooth sailing at SFO right now.",
-        "light": "SFO is moving well.",
-        "moderate": "SFO is filling up &mdash; leave a little early.",
-        "busy": "SFO is busy &mdash; give yourself extra time.",
-        "rough": "SFO is rough right now &mdash; pad your schedule.",
-        "unknown": "SFO status is partial right now.",
-    }.get(b, "")
-    state = lng.get("state")
-    tail = ""
-    if state and lng.get("ok") is not False:
-        tail = {
-            "FULL": " The lounge is at capacity.",
-            "WAITLIST": " The lounge has a waitlist running.",
-            "CLOSED": " The lounge is closed.",
-            "OPEN/walk-in": " The lounge is open for walk-ins.",
-            "OPEN/list-on": " The lounge is open (list running, no queue).",
-        }.get(state, "")
-    return airport + tail
-
-
 # --------------------------------------------------------------------------- #
 # Page
 # --------------------------------------------------------------------------- #
@@ -296,17 +283,6 @@ body{background:var(--bg);color:var(--ink);
 .fresh{font-size:12px;color:var(--muted);text-align:right;}
 .fresh .mono{color:var(--ink);}
 
-.hero{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;
-  background:var(--surface);border:1px solid var(--hair);border-radius:16px;
-  padding:22px 24px;box-shadow:var(--shadow);margin-bottom:18px;}
-.score{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
-  font-size:64px;line-height:.9;font-weight:600;letter-spacing:-.02em;}
-.score small{font-size:20px;color:var(--muted);font-weight:500;}
-.hero-body{display:flex;flex-direction:column;gap:8px;}
-.bandpill{align-self:flex-start;font-family:ui-monospace,monospace;
-  text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:600;
-  color:#fff;padding:3px 10px;border-radius:999px;}
-.verdict{font-size:17px;text-wrap:balance;max-width:46ch;}
 .delayscard{margin-bottom:18px;}
 .dbar-row{display:grid;grid-template-columns:120px 1fr 82px;gap:12px;
   align-items:start;margin-bottom:16px;}
@@ -327,10 +303,9 @@ body{background:var(--bg);color:var(--ink);
 .dbar-meta{font-family:ui-monospace,monospace;font-size:11px;
   color:var(--muted);text-align:right;padding-top:3px;}
 .dbar-empty{font-size:12px;color:var(--muted);padding-top:3px;}
-.missing{font-size:12px;color:var(--muted);}
 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
-@media(max-width:720px){.grid{grid-template-columns:1fr}.hero{grid-template-columns:1fr}}
+@media(max-width:720px){.grid{grid-template-columns:1fr}}
 .card{background:var(--surface);border:1px solid var(--hair);border-radius:16px;
   padding:18px 20px;box-shadow:var(--shadow);}
 .card-title{font-family:ui-monospace,monospace;text-transform:uppercase;
@@ -339,18 +314,14 @@ body{background:var(--bg);color:var(--ink);
 
 .legend{font-size:11px;color:var(--muted);margin:-8px 0 14px;}
 .legend b{color:var(--ink);font-weight:600;}
-.sig{margin-bottom:15px;}
+.sig{margin-bottom:16px;}
 .sig:last-child{margin-bottom:0;}
 .sig[data-dim="1"]{opacity:.5;}
-.sig-head{display:flex;align-items:baseline;gap:8px;margin-bottom:5px;}
-.sig-label{font-family:ui-monospace,monospace;text-transform:capitalize;
-  font-size:13px;font-weight:600;}
-.sig-weight{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);}
+.sig-head{display:flex;align-items:baseline;gap:8px;}
+.sig-label{font-family:ui-monospace,monospace;font-size:13px;font-weight:600;}
 .sig-val{margin-left:auto;font-family:ui-monospace,monospace;
-  font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;}
-.track{height:6px;border-radius:4px;background:var(--hair);overflow:hidden;}
-.fill{height:100%;border-radius:4px;transition:width .3s;}
-.sig-sum{font-size:12px;color:var(--muted);margin-top:5px;}
+  font-variant-numeric:tabular-nums;font-size:19px;font-weight:700;}
+.sig-sum{font-size:12px;color:var(--muted);margin-top:3px;}
 
 .lounge-state{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
 .pill{font-family:ui-monospace,monospace;text-transform:uppercase;
@@ -400,37 +371,27 @@ def render_html(
 ) -> str:
     airport_hist = airport_hist or []
     lounge_hist = lounge_hist or []
-    comp = bundle.get("composite") or {}
     subs = bundle.get("subscores") or {}
-    score = comp.get("score")
     lng = bundle.get("lounge") or {}
 
-    # Signal rows: (display label, weight, subscore, human summary).
-    from . import security, departures, faa, approach, drive
-    from .score import WEIGHTS
+    # Stat rows: plain numbers, colored by internal severity score. The
+    # composite is still computed/logged but deliberately not displayed;
+    # measured delays live on the Flight delays card, not here.
+    from . import security, faa, approach, drive
+    vals = signal_stats(bundle, terminal)
     rows = [
-        ("Security", WEIGHTS["security"][0], subs.get("security"),
-         security.summarize(bundle.get("security") or {}, terminal)),
-        ("Delays", WEIGHTS["delays"][0], subs.get("delays"),
-         departures.delay_signal_summary(bundle.get("departures") or {}, terminal)),
-        # Departures (volume) still scores into the composite, but is
-        # intentionally not listed here -- the flight-delay bars carry it.
-        ("FAA delays", WEIGHTS["gdp"][0], subs.get("gdp"),
-         faa.summarize(bundle.get("faa") or {})),
-        ("Approach", WEIGHTS["approach"][0], subs.get("approach"),
-         approach.summarize(bundle.get("approach") or {})),
-        ("Drive", WEIGHTS["drive"][0], subs.get("drive"),
-         drive.summarize(bundle.get("drive") or {})),
+        ("Security", subs.get("security"), vals["security"],
+         security.summarize(bundle.get("security") or {}, terminal), ""),
+        ("FAA delays", subs.get("gdp"), vals["gdp"],
+         faa.summarize(bundle.get("faa") or {}),
+         "The FAA's declared programs/delays for SFO; the Flight delays card "
+         "shows the measured result."),
+        ("Approach", subs.get("approach"), vals["approach"],
+         approach.summarize(bundle.get("approach") or {}), ""),
+        ("Drive", subs.get("drive"), vals["drive"],
+         drive.summarize(bundle.get("drive") or {}), ""),
     ]
-    bars = "".join(_signal_bar(lbl, val, wt, summ) for lbl, wt, val, summ in rows)
-
-    band_name = band(score)
-    band_color = _band_color(score)
-    score_txt = f'{round(score)}<small>/100</small>' if score is not None else "&mdash;"
-
-    missing = comp.get("missing") or []
-    missing_html = (f'<div class="missing">not counted: {_esc(", ".join(missing))} '
-                    f'(weights renormalized)</div>' if missing else "")
+    bars = "".join(_stat_row(*row) for row in rows)
 
     # Flight-delay gradient bars: each bucket's flights sorted by delay,
     # colored 0 -> shared max onto green -> red (see _delay_bar_row).
@@ -509,24 +470,11 @@ def render_html(
       board <span class="mono">{fresh_board}</span></div>
   </div>
 
-  <div class="hero">
-    <div class="score mono" style="color:{band_color}"
-      title="Weighted blend of the signals below: 0 = frictionless, 100 = worst realistic day.">{score_txt}</div>
-    <div class="hero-body">
-      <span class="bandpill" style="background:{band_color}"
-        title="Bands: quiet &lt;20 &middot; light &lt;40 &middot; moderate &lt;60 &middot; busy &lt;80 &middot; rough 80+">{_esc(band_name)}</span>
-      <div class="verdict">{_verdict(score, lng)}</div>
-      {missing_html}
-    </div>
-  </div>
-
   {delays_html}
 
   <div class="grid">
     <div class="card">
-      <div class="card-title">Airport signals</div>
-      <div class="legend">each scored <b>0</b> clear &rarr; <b>100</b> rough &middot;
-        <b>wt</b> = share of the headline score</div>
+      <div class="card-title">Airport status</div>
       {bars}
     </div>
     {_lounge_card(lng, security.best_general_min(bundle.get("security") or {}, terminal))}
