@@ -49,10 +49,13 @@ def fetch() -> dict[str, Any]:
                 v = _text(el.find(tag))
                 if v:
                     ev[tag.lower()] = v
-            # Ground Delay Programs nest their delay under Arrival_Departure.
+            # Delays nest under <Arrival_Departure Type="Arrival|Departure">.
+            # Type is an ATTRIBUTE (not a child), and Trend/Min/Max are children.
             ad = el.find("Arrival_Departure")
             if ad is not None:
-                for tag in ("Type", "Avg", "Max", "Min"):
+                if ad.get("Type"):
+                    ev["ad_type"] = ad.get("Type")  # "Arrival" | "Departure"
+                for tag in ("Avg", "Max", "Min", "Trend"):
                     v = _text(ad.find(tag))
                     if v:
                         ev[f"ad_{tag.lower()}"] = v
@@ -149,14 +152,15 @@ def summarize(reading: dict) -> str:
     parts = []
     for e in events:
         cat = e["category"]
+        direction = (e.get("ad_type") or "").lower()  # "arrival"|"departure"|""
         if "Ground Stop" in cat:
             what = "ground stop"
         elif "Ground Delay" in cat or "Delay Program" in cat:
             what = "ground delay program"
         elif "Closure" in cat:
             what = "airport closure"
-        else:
-            what = "delays"
+        else:  # a general delay advisory -- name the side it hits
+            what = f"{direction} delays".strip() if direction else "delays"
         lo = _mins(e.get("ad_min") or e.get("min"))
         hi = _mins(e.get("ad_max") or e.get("max") or e.get("ad_avg")
                    or e.get("avg"))
@@ -166,6 +170,8 @@ def summarize(reading: dict) -> str:
             rng = f" ~{hi}"
         else:
             rng = ""
+        trend = {"Increasing": ", rising", "Decreasing": ", easing"}.get(
+            e.get("ad_trend") or e.get("trend"), "")
         reason = _friendly_reason(e.get("reason"))
-        parts.append(f"{what}{rng}" + (f" ({reason})" if reason else ""))
+        parts.append(f"{what}{rng}{trend}" + (f" ({reason})" if reason else ""))
     return "FAA: " + "; ".join(parts)
