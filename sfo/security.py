@@ -145,7 +145,7 @@ def summarize(reading: dict, terminal: str | None = None) -> str:
     if terminal:
         cps = _terminal_cps(reading, terminal)
         if not cps:
-            return f"Security [{terminal}]: no checkpoint data"
+            return f"{terminal} no checkpoint data"
         best_gen = min((c for c in cps if c["general_min"] is not None),
                        key=lambda c: c["general_min"], default=None)
         pre = [c["precheck_min"] for c in cps if c["precheck_min"] is not None]
@@ -155,8 +155,10 @@ def summarize(reading: dict, terminal: str | None = None) -> str:
                 f"{best_gen['name']} ~{best_gen['general_min']}m general")
         if pre:
             parts.append(f"PreCheck ~{min(pre)}m")
+        # Shortest lines in the terminal. No "Security:" prefix -- the row
+        # label already says it.
         body = ", ".join(parts) if parts else "no wait data"
-        return f"Security [{terminal}]: {body} (best lines)"
+        return f"{terminal} {body}"
 
     worst = reading.get("max_general_min")
     avg = reading.get("avg_general_min")
