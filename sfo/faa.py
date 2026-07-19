@@ -75,30 +75,69 @@ def score(reading: dict) -> float | None:
     """0..100. Ground stop dominates; GDP scales by average delay minutes."""
     if not reading.get("ok"):
         return None
-    if reading.get("closure"):
-        return 100.0
-    if reading.get("ground_stop"):
-        return 100.0
+    if reading.get("closure") or reading.get("ground_stop"):
+        return 100.0  # nothing is departing / arriving
+    # Score by the worst delay minutes the FAA is advertising -- across ALL
+    # categories, not just formal Ground Delay Programs. A "General Delay Info"
+    # miles-in-trail initiative still reports real minutes. 60 min -> ~100.
+    mins = _max_delay_minutes(reading["events"])
+    if mins is not None:
+        base = common.linscale(mins, 0, 60)
+        # A declared GDP is significant even at modest minutes -> floor it.
+        return common.clamp(max(base, 55) if reading.get("ground_delay") else base)
     if reading.get("ground_delay"):
-        # Scale by the largest avg delay we can find (30 min -> ~100).
-        avg = _max_avg_minutes(reading["events"])
-        return common.clamp(50 + common.linscale(avg, 0, 60) / 2) if avg else 60.0
-    return 0.0
+        return 55.0  # GDP declared but no minutes parsed
+    return 0.0  # events with no delay info, or none at all
 
 
-def _max_avg_minutes(events: list[dict]) -> float | None:
-    mins: list[float] = []
-    for e in events:
-        for key in ("avg", "ad_avg", "max", "ad_max"):
-            v = e.get(key)
-            if not v:
-                continue
-            import re
+def _to_minutes(v: str | None) -> int | None:
+    """Parse an ASWS delay value to total minutes.
 
-            m = re.search(r"(\d+)", str(v))
-            if m:
-                mins.append(float(m.group(1)))
+    Handles '45 minutes', '1 hour', '1 hour and 30 minutes', and bare numbers.
+    """
+    import re
+    if not v:
+        return None
+    s = str(v)
+    h = re.search(r"(\d+)\s*hour", s)
+    m = re.search(r"(\d+)\s*min", s)
+    if h or m:
+        return (int(h.group(1)) * 60 if h else 0) + (int(m.group(1)) if m else 0)
+    n = re.search(r"(\d+)", s)
+    return int(n.group(1)) if n else None
+
+
+def _max_delay_minutes(events: list[dict]) -> int | None:
+    mins = [
+        t for e in events
+        for key in ("ad_max", "max", "ad_avg", "avg", "ad_min", "min")
+        if (t := _to_minutes(e.get(key))) is not None
+    ]
     return max(mins) if mins else None
+
+
+# Decode ASWS reason codes (colon-delimited segments) into plain words.
+_REASON_WORDS = {
+    "MIT": "miles-in-trail", "VOL": "volume", "WX": "weather",
+    "RWY": "runway", "Construction": "construction", "EQUIP": "equipment",
+    "STAFF": "staffing", "DEICE": "de-icing",
+}
+
+
+def _friendly_reason(raw: str | None) -> str:
+    if not raw:
+        return ""
+    out = []
+    for seg in (s.strip() for s in raw.split(":")):
+        if not seg or seg.lower().startswith("tm initiative"):
+            continue
+        out.append(_REASON_WORDS.get(seg, seg.lower()))
+    return ", ".join(dict.fromkeys(out))  # dedupe, keep order
+
+
+def _mins(v: str | None) -> str | None:
+    m = _to_minutes(v)
+    return f"{m}m" if m is not None else None
 
 
 def summarize(reading: dict) -> str:
@@ -106,12 +145,27 @@ def summarize(reading: dict) -> str:
         return f"FAA: unavailable ({reading.get('error')})"
     events = reading["events"]
     if not events:
-        return "FAA: no SFO ground program (normal ops)"
+        return "FAA: no delays or programs reported (normal ops)"
     parts = []
     for e in events:
-        bit = e["category"]
-        detail = e.get("avg") or e.get("ad_avg") or e.get("reason")
-        if detail:
-            bit += f" ({detail})"
-        parts.append(bit)
-    return "FAA: SFO " + "; ".join(parts)
+        cat = e["category"]
+        if "Ground Stop" in cat:
+            what = "ground stop"
+        elif "Ground Delay" in cat or "Delay Program" in cat:
+            what = "ground delay program"
+        elif "Closure" in cat:
+            what = "airport closure"
+        else:
+            what = "delays"
+        lo = _mins(e.get("ad_min") or e.get("min"))
+        hi = _mins(e.get("ad_max") or e.get("max") or e.get("ad_avg")
+                   or e.get("avg"))
+        if lo and hi and lo != hi:
+            rng = f" {lo}-{hi}"
+        elif hi:
+            rng = f" ~{hi}"
+        else:
+            rng = ""
+        reason = _friendly_reason(e.get("reason"))
+        parts.append(f"{what}{rng}" + (f" ({reason})" if reason else ""))
+    return "FAA: " + "; ".join(parts)

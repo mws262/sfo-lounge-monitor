@@ -352,28 +352,24 @@ def render_html(
     score = comp.get("score")
     lng = bundle.get("lounge") or {}
 
-    # Signal rows (label, subscore-key, human summary from the module).
+    # Signal rows: (display label, weight, subscore, human summary).
     from . import security, departures, faa, approach, drive
+    from .score import WEIGHTS
     rows = [
-        ("security", subs.get("security"),
+        ("Security", WEIGHTS["security"][0], subs.get("security"),
          security.summarize(bundle.get("security") or {}, terminal)),
-        ("delays", subs.get("delays"),
+        ("Delays", WEIGHTS["delays"][0], subs.get("delays"),
          departures.delay_signal_summary(bundle.get("departures") or {}, terminal)),
         # Departures (volume) still scores into the composite, but is
         # intentionally not listed here -- the flight-delay bars carry it.
-        ("ground delay", subs.get("gdp"), faa.summarize(bundle.get("faa") or {})),
-        ("approach", subs.get("approach"),
+        ("FAA delays", WEIGHTS["gdp"][0], subs.get("gdp"),
+         faa.summarize(bundle.get("faa") or {})),
+        ("Approach", WEIGHTS["approach"][0], subs.get("approach"),
          approach.summarize(bundle.get("approach") or {})),
-        ("drive", subs.get("drive"), drive.summarize(bundle.get("drive") or {})),
+        ("Drive", WEIGHTS["drive"][0], subs.get("drive"),
+         drive.summarize(bundle.get("drive") or {})),
     ]
-    from .score import WEIGHTS
-    wmap = {"security": WEIGHTS["security"][0], "delays": WEIGHTS["delays"][0],
-            "departures": WEIGHTS["departures"][0], "ground delay": WEIGHTS["gdp"][0],
-            "approach": WEIGHTS["approach"][0], "drive": WEIGHTS["drive"][0]}
-    bars = "".join(
-        _signal_bar(lbl.replace("_", " ").title(), val, wmap.get(lbl), summ)
-        for lbl, val, summ in rows
-    )
+    bars = "".join(_signal_bar(lbl, val, wt, summ) for lbl, wt, val, summ in rows)
 
     band_name = band(score)
     band_color = _band_color(score)

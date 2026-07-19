@@ -44,9 +44,13 @@ def build_payload(bundle: dict, prev_history: list[dict],
         # Departures still contributes to the composite (subscores/gather),
         # but is intentionally omitted from the visible signal list -- the
         # flight-delay bars carry the departure story on their own card.
-        {"key": "gdp", "label": "Ground delay", "weight": WEIGHTS["gdp"][0],
+        {"key": "gdp", "label": "FAA delays", "weight": WEIGHTS["gdp"][0],
          "score": subs.get("gdp"),
-         "summary": faa.summarize(bundle.get("faa") or {})},
+         "summary": faa.summarize(bundle.get("faa") or {}),
+         "note": ("The FAA's own status for SFO: ground stops, ground delay "
+                  "programs, and traffic-management delays (miles-in-trail, "
+                  "volume). This is the declared program/cause; the Delays "
+                  "signal above is the measured result.")},
         {"key": "approach", "label": "Approach", "weight": WEIGHTS["approach"][0],
          "score": subs.get("approach"),
          "summary": approach.summarize(bundle.get("approach") or {})},
