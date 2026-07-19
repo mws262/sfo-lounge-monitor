@@ -102,6 +102,19 @@ def _terminal_cps(reading: dict, terminal: str) -> list[dict]:
             if c.get("terminal") == terminal]
 
 
+def best_general_min(reading: dict, terminal: str | None = None) -> int | None:
+    """Shortest General line in minutes (scoped to a terminal if given).
+
+    Used by the lounge join-planner: entrance->lounge transit = this + walk.
+    """
+    if not reading.get("ok"):
+        return None
+    cps = _terminal_cps(reading, terminal) if terminal \
+        else reading.get("checkpoints", [])
+    gens = [c["general_min"] for c in cps if c.get("general_min") is not None]
+    return min(gens) if gens else None
+
+
 def score(reading: dict, terminal: str | None = None) -> float | None:
     """0..100 where 100 == worst. Anchors: 0 min -> 0, 30 min -> 100.
 

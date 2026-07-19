@@ -158,7 +158,41 @@ def _delay_bar_row(label: str, st: dict, gmax: int, extra: str) -> str:
         f'<div class="dbar-meta">{meta}</div></div>')
 
 
-def _lounge_card(lng: dict) -> str:
+# Join-planner constants (keep in sync with docs/index.html).
+GRACE_MIN = 10   # minutes allowed to reach the lounge once called
+WALK_MIN = 2     # walking, airport entrance -> security -> lounge door
+
+
+def _join_planner(lng: dict, sec_wait_min: int | None) -> str:
+    """'join ~Nm before you arrive' + waitlist link, while joins are open."""
+    if not (lng.get("isWaitlistOpen") and not lng.get("isWaitlistFull")):
+        return ""
+    from .lounge import QR_PAGE
+    wm = lng.get("waitMin")
+    if wm is None:
+        lead_html = "no wait estimate right now &middot; "
+    elif sec_wait_min is None:
+        lead_html = "security wait unknown - can't estimate &middot; "
+    else:
+        lead = wm - sec_wait_min - WALK_MIN
+        if lead > 0:
+            lead_html = f"join ~<b>{lead}m</b> before you arrive at SFO &middot; "
+        elif lead >= -GRACE_MIN:
+            lead_html = "join when you arrive at SFO &middot; "
+        else:
+            lead_html = "short wait - join after clearing security &middot; "
+    tip = (f"Timed so you're called about when you reach the lounge door: "
+           f"quoted wait {'~' + str(wm) + 'm' if wm is not None else 'n/a'}, "
+           f"entrance to door = security "
+           f"{'~' + str(sec_wait_min) + 'm' if sec_wait_min is not None else '?'} "
+           f"+ {WALK_MIN}m walk. The {GRACE_MIN}-min grace after being called "
+           f"is kept as buffer in case the line moves faster than quoted.")
+    return (f'<div class="planner" title="{_esc(tip)}">{lead_html}'
+            f'<a href="{QR_PAGE}" target="_blank" rel="noopener">'
+            f'open waitlist &#8599;</a></div>')
+
+
+def _lounge_card(lng: dict, sec_wait_min: int | None = None) -> str:
     if lng.get("ok") is False:
         return ('<div class="card lounge"><div class="card-title">Club SFO</div>'
                 f'<div class="unavail">unavailable &mdash; {_esc(lng.get("error"))}'
@@ -178,6 +212,7 @@ def _lounge_card(lng: dict) -> str:
         f'<div class="lounge-state"><span class="pill" style="--pill:{color}">'
         f'{_esc(state)}</span><span class="lounge-hint">{_esc(hint(state))}'
         '</span></div>'
+        f'{_join_planner(lng, sec_wait_min)}'
         '<div class="metrics">'
         f'<div class="metric"><div class="m-val">{wait_txt}</div>'
         '<div class="m-lab">est wait</div></div>'
@@ -313,6 +348,12 @@ body{background:var(--bg);color:var(--ink);
   letter-spacing:.08em;font-size:12px;font-weight:600;color:#fff;
   background:var(--pill);padding:4px 11px;border-radius:999px;}
 .lounge-hint{font-size:13px;color:var(--muted);}
+.planner{font-size:13px;color:var(--muted);margin:-6px 0 14px;}
+.planner b{color:var(--ink);font-weight:600;font-family:ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;}
+.planner a{color:var(--accent);font-weight:600;text-decoration:none;
+  white-space:nowrap;}
+.planner a:hover,.planner a:focus{text-decoration:underline;}
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px 10px;}
 .metric{}
 .m-val{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
@@ -471,7 +512,7 @@ def render_html(
         <b>wt</b> = share of the headline score</div>
       {bars}
     </div>
-    {_lounge_card(lng)}
+    {_lounge_card(lng, security.best_general_min(bundle.get("security") or {}, terminal))}
   </div>
 
   <div class="trends">{trends}</div>

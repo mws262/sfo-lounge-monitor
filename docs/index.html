@@ -111,6 +111,12 @@ body{background:var(--bg);color:var(--ink);
   background:var(--muted);padding:4px 11px;border-radius:999px;}
 .lounge-hint{font-size:13px;color:var(--muted);}
 .joined{font-size:12px;color:var(--accent);font-family:ui-monospace,monospace;}
+.planner{font-size:13px;color:var(--muted);margin:-6px 0 14px;}
+.planner b{color:var(--ink);font-weight:600;font-family:ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;}
+.planner a{color:var(--accent);font-weight:600;text-decoration:none;
+  white-space:nowrap;}
+.planner a:hover,.planner a:focus{text-decoration:underline;}
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px 10px;}
 .m-val{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:22px;font-weight:600;}
@@ -203,6 +209,12 @@ const LOUNGE_POLL_MS = 60000;   // courtesy floor: same doc a walk-in loads
 const DATA_POLL_MS   = 5 * 60000;
 const STALE_AIR_MIN  = 45;      // cron should land every 20 min
 
+// Join-planner: once called you have GRACE min to reach the lounge; the walk
+// from the airport entrance (through security) to the lounge door is WALK min
+// of walking plus the live security wait.
+const WAITLIST_URL = "https://waitwhile.com/locations/o0Sz5GVh6nIrQet8Ifbi?qr=true";
+const GRACE_MIN = 10, WALK_MIN = 2;
+
 const BANDS = [[20,"quiet","#2fa76a"],[40,"light","#7aa63c"],
   [60,"moderate","#d99a2b"],[80,"busy","#e2792e"],[101,"rough","#d64545"]];
 const MUTED = "#8b93a1";
@@ -280,6 +292,8 @@ function sparkline(container, values, color){
 
 /* ------------------------------------------------------------ lounge (live) */
 let lastTicket = null, lastJoinNote = "", loungeBooted = false;
+let secWaitMin = null;        // T1 best General line, from data.json
+let lastLoungeFields = null;  // re-render the card when airport data lands
 async function pollLounge(){
   // Courtesy: don't poll from background tabs -- but always do the first
   // fetch so a tab opened in the background still renders once.
@@ -299,7 +313,21 @@ async function pollLounge(){
     $("fresh-lounge").textContent = "unreachable";
   }
 }
+function joinPlan(wm, sec){
+  // How many minutes before reaching the airport to join the waitlist, so
+  // you're called about when you reach the lounge door (entrance->door =
+  // security + walk). The 10-min called-grace is kept as buffer in case the
+  // queue moves faster than quoted.
+  if(wm == null) return {text: "no wait estimate right now", lead: null};
+  if(sec == null) return {text: "security wait unknown - can't estimate", lead: null};
+  const lead = wm - sec - WALK_MIN;
+  if(lead > 0) return {lead, text: null};
+  if(lead >= -GRACE_MIN) return {text: "join when you arrive at SFO", lead: null};
+  return {text: "short wait - join after clearing security", lead: null};
+}
+
 function renderLounge(f){
+  lastLoungeFields = f;
   const state = deriveState(f);
   const color = LOUNGE_COLORS[state] || MUTED;
   const wm = (typeof f.wait === "number" && f.wait >= 0) ? Math.round(f.wait/60) : null;
@@ -318,6 +346,34 @@ function renderLounge(f){
   stateRow.append(pill, hint);
   if(lastJoinNote){ const j = document.createElement("span");
     j.className = "joined"; j.textContent = lastJoinNote; stateRow.append(j); }
+
+  // Join planner + link -- only while the waitlist is accepting joins.
+  let planner = null;
+  if(f.isWaitlistOpen && !f.isWaitlistFull){
+    planner = document.createElement("div");
+    planner.className = "planner";
+    const plan = joinPlan(wm, secWaitMin);
+    if(plan.lead != null){
+      planner.append("join ~");
+      const b = document.createElement("b");
+      b.textContent = plan.lead + "m";
+      planner.append(b, " before you arrive at SFO · ");
+    }else{
+      planner.append(plan.text + " · ");
+    }
+    const a = document.createElement("a");
+    a.href = WAITLIST_URL; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = "open waitlist ↗";
+    planner.append(a);
+    planner.title = "Timed so you're called about when you reach the lounge "
+      + "door: quoted wait " + (wm != null ? "~" + wm + "m" : "n/a")
+      + ", entrance→door ≈ security "
+      + (secWaitMin != null ? "~" + secWaitMin + "m" : "?")
+      + " + " + WALK_MIN + "m walk. The " + GRACE_MIN + "-min grace after "
+      + "being called is kept as buffer in case the line moves faster than "
+      + "quoted. Security wait refreshes with airport data (~20 min).";
+  }
+
   const met = document.createElement("div");
   met.className = "metrics";
   const items = [
@@ -333,7 +389,8 @@ function renderLounge(f){
     ml.textContent = lab;
     m.append(mv, ml); met.append(m);
   }
-  el.append(stateRow, met);
+  if(planner) el.append(stateRow, planner, met);
+  else el.append(stateRow, met);
   $("trend-q-now").textContent = f.numWaiting ?? "—";
 }
 
@@ -374,6 +431,9 @@ function renderAirport(d){
   b.title = "Bands: quiet <20 · light <40 · moderate <60 · busy <80 · rough 80+";
   lastLoungeStateFromData = d.lounge && d.lounge.state || null;
   $("verdict").textContent = verdictText(bandName, lastLoungeStateFromData);
+  secWaitMin = (typeof d.security_wait_min === "number")
+    ? d.security_wait_min : null;
+  if(lastLoungeFields) renderLounge(lastLoungeFields);  // refresh planner
 
   // Flight-delay gradient bars: each bar is the bucket's flights sorted by
   // delay; color maps delay minutes 0 -> shared max onto green -> red.

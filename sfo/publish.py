@@ -80,6 +80,9 @@ def build_payload(bundle: dict, prev_history: list[dict],
         "missing": comp.get("missing") or [],
         "signals": signals,
         "delays": delays,  # scoped delay stats (n/pct/median/max/cancelled)
+        # Shortest General security line (scoped), for the lounge join-planner.
+        "security_wait_min": security.best_general_min(
+            bundle.get("security") or {}, terminal),
         "board_updated": (bundle.get("departures") or {}).get("board_updated"),
         "lounge": lng if lng.get("ok") is not False else {"error": lng.get("error")},
         "history": history,
