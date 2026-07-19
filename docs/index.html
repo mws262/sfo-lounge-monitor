@@ -146,11 +146,12 @@ body{background:var(--bg);color:var(--ink);
   </div>
 
   <div class="card delayscard" id="delaycard" hidden
-    title="Each bar: flights sorted by delay, left (least) to right (most). Color = delay minutes on a shared 0..max scale, green to red. Took off = actual vs schedule for the last 2 hours; next 3h = airline estimates, which skew optimistic.">
+    title="Each bar: flights sorted by delay, left (least) to right (most). Green is reserved for on-time flights; any delay ramps yellow to red on a 0..max scale shared between the bars. Took off = actual vs schedule for the last 2 hours; next 3h = airline estimates, which skew optimistic.">
     <div class="card-title">Flight delays <span class="dim" id="delay-scope"></span></div>
     <div id="delaybars"></div>
-    <div class="legend">flights sorted by delay &middot; color = delay, <b>0m</b> green
-      &rarr; <b>max</b> red (shared scale) &middot; ticks at min / median / max</div>
+    <div class="legend">flights sorted by delay &middot; <b>green</b> = on time &middot;
+      delays <b>yellow</b> &rarr; <b>red</b> at max (shared scale) &middot;
+      ticks at min / median / max</div>
   </div>
 
   <div class="grid">
@@ -397,11 +398,19 @@ function renderAirport(d){
     }else{
       anyBar = true;
       const wrapEl = document.createElement("div"); wrapEl.className = "dbar-wrap";
-      const stops = arr.map((v, i) => {
-        const off = arr.length === 1 ? 0 : (i / (arr.length - 1)) * 100;
-        const t = gmax ? Math.min(1, v / gmax) : 0;
-        return "hsl(" + Math.round(120 * (1 - t)) + ",72%,44%) " + off.toFixed(1) + "%";
-      });
+      // Green is RESERVED for zero delay; any lateness ramps yellow -> red on
+      // the shared 0..max scale. Duplicate-offset stop = hard green/yellow cut,
+      // so the green span reads directly as the on-time share.
+      const colorFor = v => v <= 0 ? "hsl(120,60%,40%)"
+        : "hsl(" + Math.round(60 * (1 - (gmax ? Math.min(1, v / gmax) : 0)))
+          + ",78%,45%)";
+      const stops = [];
+      for(let i = 0; i < arr.length; i++){
+        const off = (arr.length === 1 ? 0 : (i / (arr.length - 1)) * 100).toFixed(1);
+        if(i > 0 && arr[i-1] <= 0 && arr[i] > 0)
+          stops.push(colorFor(0) + " " + off + "%");
+        stops.push(colorFor(arr[i]) + " " + off + "%");
+      }
       if(arr.length === 1) stops.push(stops[0].replace(" 0.0%", " 100%"));
       const bar = document.createElement("div"); bar.className = "dbar";
       bar.style.background = "linear-gradient(to right," + stops.join(",") + ")";

@@ -116,11 +116,22 @@ def _delay_bar_row(label: str, st: dict, gmax: int, extra: str) -> str:
                 f'<div class="dbar-meta">{meta}</div></div>')
 
     n = len(arr)
+
+    # Green is RESERVED for zero delay; any lateness ramps yellow -> red on
+    # the shared 0..max scale. A duplicate-offset stop makes a hard
+    # green/yellow cut, so the green span reads directly as the on-time share.
+    def _color(v: float) -> str:
+        if v <= 0:
+            return "hsl(120,60%,40%)"
+        t = min(1.0, v / gmax) if gmax else 0.0
+        return f"hsl({round(60 * (1 - t))},78%,45%)"
+
     stops = []
     for i, v in enumerate(arr):
         off = 0.0 if n == 1 else i / (n - 1) * 100
-        t = min(1.0, v / gmax) if gmax else 0.0
-        stops.append(f"hsl({round(120 * (1 - t))},72%,44%) {off:.1f}%")
+        if i > 0 and arr[i - 1] <= 0 and v > 0:
+            stops.append(f"{_color(0)} {off:.1f}%")
+        stops.append(f"{_color(v)} {off:.1f}%")
     if n == 1:
         stops.append(stops[0].replace(" 0.0%", " 100%"))
     med = arr[n // 2] if n % 2 else round((arr[n // 2 - 1] + arr[n // 2]) / 2)
@@ -379,15 +390,16 @@ def render_html(
             else "&middot; departures"
         delays_html = (
             f'<div class="card delayscard" title="Each bar: flights sorted by '
-            f'delay, left (least) to right (most). Color = delay minutes on a '
-            f'shared 0..max scale, green to red. Took off = actual vs schedule '
+            f'delay, left (least) to right (most). Green is reserved for '
+            f'on-time flights; any delay ramps yellow to red on a 0..max '
+            f'scale shared between the bars. Took off = actual vs schedule '
             f'for the last 2 hours; next 3h = airline estimates, which skew '
             f'optimistic.">'
             f'<div class="card-title">Flight delays <span class="dim">'
             f'{scope_txt}</span></div>{rows}'
-            f'<div class="legend">flights sorted by delay &middot; color = '
-            f'delay, <b>0m</b> green &rarr; <b>max</b> red (shared scale) '
-            f'&middot; ticks at min / median / max</div></div>')
+            f'<div class="legend">flights sorted by delay &middot; <b>green</b> '
+            f'= on time &middot; delays <b>yellow</b> &rarr; <b>red</b> at max '
+            f'(shared scale) &middot; ticks at min / median / max</div></div>')
 
     # Trends
     ap_scores = [r.get("score") for r in airport_hist]
