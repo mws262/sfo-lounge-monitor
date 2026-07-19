@@ -60,10 +60,13 @@ body{background:var(--bg);color:var(--ink);
 @media(max-width:720px){.dbar-row{grid-template-columns:96px 1fr 60px;}}
 .dbar-label{font-family:ui-monospace,monospace;font-size:12px;font-weight:600;
   padding-top:3px;}
-.dbar-wrap{position:relative;padding-top:4px;}
+.dbar-wrap{position:relative;padding-top:17px;}
 .dbar{height:14px;border-radius:4px;}
-.dtick{position:absolute;top:0;width:2px;height:22px;background:var(--ink);
-  opacity:.55;border-radius:1px;transform:translateX(-1px);}
+.dmed{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;
+  font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:11px;font-weight:600;color:var(--ink);}
+.dtick{position:absolute;top:15px;width:2px;height:18px;background:var(--ink);
+  opacity:.6;border-radius:1px;transform:translateX(-1px);}
 .dlabels{display:flex;justify-content:space-between;
   font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:11px;color:var(--muted);margin-top:4px;}
@@ -146,12 +149,12 @@ body{background:var(--bg);color:var(--ink);
   </div>
 
   <div class="card delayscard" id="delaycard" hidden
-    title="Each bar: flights sorted by delay, left (least) to right (most). Green is reserved for on-time flights; any delay ramps yellow to red on a 0..max scale shared between the bars. Took off = actual vs schedule for the last 2 hours; next 3h = airline estimates, which skew optimistic.">
+    title="Each bar: flights sorted by delay, left (least) to right (most). Green is reserved for on-time flights; any delay ramps yellow to red on a 0..max scale shared between the bars. The tick marks the median delay among late (>=15m) flights, at its true position. Took off = actual vs schedule for the last 2 hours; next 3h = airline estimates, which skew optimistic.">
     <div class="card-title">Flight delays <span class="dim" id="delay-scope"></span></div>
     <div id="delaybars"></div>
     <div class="legend">flights sorted by delay &middot; <b>green</b> = on time &middot;
       delays <b>yellow</b> &rarr; <b>red</b> at max (shared scale) &middot;
-      ticks at min / median / max</div>
+      tick marks median of late flights</div>
   </div>
 
   <div class="grid">
@@ -375,8 +378,7 @@ function renderAirport(d){
   // Flight-delay gradient bars: each bar is the bucket's flights sorted by
   // delay; color maps delay minutes 0 -> shared max onto green -> red.
   const dl = d.delays || {};
-  const medOf = a => { const m = a.length >> 1;
-    return a.length % 2 ? a[m] : Math.round((a[m-1] + a[m]) / 2); };
+  const DELAY_THRESH = 15;
   const buckets = [
     ["took off last 2h", dl.departed, ""],
     ["next 3h (est)", dl.upcoming,
@@ -415,13 +417,22 @@ function renderAirport(d){
       const bar = document.createElement("div"); bar.className = "dbar";
       bar.style.background = "linear-gradient(to right," + stops.join(",") + ")";
       wrapEl.append(bar);
-      for(const p of [0, 50, 100]){
+      // Median tick marks the median delay AMONG LATE flights (>=15m), placed
+      // at that flight's true rank in the sorted bar -- not the bar's center.
+      const lateCount = arr.filter(v => v >= DELAY_THRESH).length;
+      const medLate = st.median_delay_min;
+      if(lateCount > 0 && medLate != null){
+        const firstLate = arr.length - lateCount;
+        const medRank = firstLate + (lateCount - 1) / 2;
+        const medPos = arr.length > 1 ? medRank / (arr.length - 1) * 100 : 50;
         const tick = document.createElement("div"); tick.className = "dtick";
-        tick.style.left = p + "%"; wrapEl.append(tick);
+        tick.style.left = medPos + "%"; wrapEl.append(tick);
+        const ml = document.createElement("div"); ml.className = "dmed";
+        ml.style.left = Math.max(9, Math.min(91, medPos)) + "%";
+        ml.textContent = "med " + medLate + "m"; wrapEl.append(ml);
       }
       const lbls = document.createElement("div"); lbls.className = "dlabels";
-      for(const [k, v] of [["min", arr[0]], ["med", medOf(arr)],
-                           ["max", arr[arr.length - 1]]]){
+      for(const [k, v] of [["min", arr[0]], ["max", arr[arr.length - 1]]]){
         const s = document.createElement("span");
         s.textContent = k + " " + v + "m"; lbls.append(s);
       }

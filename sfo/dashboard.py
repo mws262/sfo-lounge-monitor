@@ -134,16 +134,26 @@ def _delay_bar_row(label: str, st: dict, gmax: int, extra: str) -> str:
         stops.append(f"{_color(v)} {off:.1f}%")
     if n == 1:
         stops.append(stops[0].replace(" 0.0%", " 100%"))
-    med = arr[n // 2] if n % 2 else round((arr[n // 2 - 1] + arr[n // 2]) / 2)
-    ticks = "".join(f'<div class="dtick" style="left:{p}%"></div>'
-                    for p in (0, 50, 100))
+    # Median tick marks the median delay AMONG LATE flights (>=15m), placed at
+    # that flight's true rank in the sorted bar -- not the bar's center.
+    thresh = 15  # keep in sync with departures.DELAY_THRESHOLD_MIN
+    late_count = sum(1 for v in arr if v >= thresh)
+    med_late = (st or {}).get("median_delay_min")
+    med_html = ""
+    if late_count and med_late is not None:
+        first_late = n - late_count
+        med_rank = first_late + (late_count - 1) / 2
+        med_pos = med_rank / (n - 1) * 100 if n > 1 else 50
+        lab_pos = max(9.0, min(91.0, med_pos))
+        med_html = (
+            f'<div class="dtick" style="left:{med_pos:.1f}%"></div>'
+            f'<div class="dmed" style="left:{lab_pos:.1f}%">med {med_late}m</div>')
     labels = "".join(f"<span>{k} {v}m</span>"
-                     for k, v in (("min", arr[0]), ("med", med),
-                                  ("max", arr[-1])))
+                     for k, v in (("min", arr[0]), ("max", arr[-1])))
     return (
         f'<div class="dbar-row"><div class="dbar-label">{_esc(label)}</div>'
         f'<div class="dbar-wrap"><div class="dbar" style="background:'
-        f'linear-gradient(to right,{",".join(stops)})"></div>{ticks}'
+        f'linear-gradient(to right,{",".join(stops)})"></div>{med_html}'
         f'<div class="dlabels">{labels}</div></div>'
         f'<div class="dbar-meta">{meta}</div></div>')
 
@@ -260,10 +270,13 @@ body{background:var(--bg);color:var(--ink);
 @media(max-width:720px){.dbar-row{grid-template-columns:96px 1fr 60px;}}
 .dbar-label{font-family:ui-monospace,monospace;font-size:12px;font-weight:600;
   padding-top:3px;}
-.dbar-wrap{position:relative;padding-top:4px;}
+.dbar-wrap{position:relative;padding-top:17px;}
 .dbar{height:14px;border-radius:4px;}
-.dtick{position:absolute;top:0;width:2px;height:22px;background:var(--ink);
-  opacity:.55;border-radius:1px;transform:translateX(-1px);}
+.dmed{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;
+  font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:11px;font-weight:600;color:var(--ink);}
+.dtick{position:absolute;top:15px;width:2px;height:18px;background:var(--ink);
+  opacity:.6;border-radius:1px;transform:translateX(-1px);}
 .dlabels{display:flex;justify-content:space-between;
   font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:11px;color:var(--muted);margin-top:4px;}
@@ -392,14 +405,15 @@ def render_html(
             f'<div class="card delayscard" title="Each bar: flights sorted by '
             f'delay, left (least) to right (most). Green is reserved for '
             f'on-time flights; any delay ramps yellow to red on a 0..max '
-            f'scale shared between the bars. Took off = actual vs schedule '
-            f'for the last 2 hours; next 3h = airline estimates, which skew '
-            f'optimistic.">'
+            f'scale shared between the bars. The tick marks the median delay '
+            f'among late (>=15m) flights, at its true position. Took off = '
+            f'actual vs schedule for the last 2 hours; next 3h = airline '
+            f'estimates, which skew optimistic.">'
             f'<div class="card-title">Flight delays <span class="dim">'
             f'{scope_txt}</span></div>{rows}'
             f'<div class="legend">flights sorted by delay &middot; <b>green</b> '
             f'= on time &middot; delays <b>yellow</b> &rarr; <b>red</b> at max '
-            f'(shared scale) &middot; ticks at min / median / max</div></div>')
+            f'(shared scale) &middot; tick marks median of late flights</div></div>')
 
     # Trends
     ap_scores = [r.get("score") for r in airport_hist]
