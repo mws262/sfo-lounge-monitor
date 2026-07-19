@@ -353,13 +353,13 @@ def render_html(
     lng = bundle.get("lounge") or {}
 
     # Signal rows (label, subscore-key, human summary from the module).
-    from . import security, metar, faa, departures, approach, drive
+    from . import security, metar, faa, approach, drive
     rows = [
         ("security", subs.get("security"),
          security.summarize(bundle.get("security") or {}, terminal)),
         ("fog", subs.get("fog"), metar.summarize(bundle.get("weather") or {})),
-        ("departures", subs.get("departures"),
-         departures.summarize(bundle.get("departures") or {}, terminal)),
+        # Departures still scores into the composite, but is intentionally
+        # not listed here -- the flight-delay bars carry the departure story.
         ("ground delay", subs.get("gdp"), faa.summarize(bundle.get("faa") or {})),
         ("approach", subs.get("approach"),
          approach.summarize(bundle.get("approach") or {})),
