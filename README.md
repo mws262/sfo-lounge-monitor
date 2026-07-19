@@ -20,7 +20,7 @@ SFO right now: 61.4/100 (busy)
   Security [T1]: avg ~6m, worst ~12m general, busiest Checkpoint B 12m
   Weather: IFR, 900ft ceiling, 10SM vis (wind 280@8kt)
   FAA: no SFO ground program (normal ops)
-  Departures from T1: 16 scheduled in next 90m (2 delayed, 3 cxl)
+  Departures from T1: 16 scheduled in next 90m (2 delayed, 3 cancelled)
   (missing: drive)
 Club SFO: WAITLIST - ~15m wait, 8 ahead (19 guests), 42 serving - join the list now
 ```

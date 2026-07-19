@@ -396,7 +396,7 @@ def render_html(
         rows = (
             _delay_bar_row("took off last 2h", dep_b, gmax, "")
             + _delay_bar_row("next 3h (est)", up_b, gmax,
-                             f'{up_b["cancelled"]} cxl'
+                             f'{up_b["cancelled"]} cancelled'
                              if up_b.get("cancelled") else "")
         )
         scope_txt = f"&middot; {_esc(terminal)} departures" if terminal \

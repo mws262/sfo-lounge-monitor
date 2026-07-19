@@ -267,6 +267,6 @@ def delay_summary(st: dict) -> str:
         return "delays: no data"
     dep = st.get("departed") or {}
     up = st.get("upcoming") or {}
-    cxl = f", {up['cancelled']} cxl" if up.get("cancelled") else ""
+    cxl = f", {up['cancelled']} cancelled" if up.get("cancelled") else ""
     return (f"took off last 2h: {_bucket_summary(dep)} | "
             f"next 3h est: {_bucket_summary(up)}{cxl}")

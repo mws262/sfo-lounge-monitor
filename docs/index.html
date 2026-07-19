@@ -382,7 +382,7 @@ function renderAirport(d){
   const buckets = [
     ["took off last 2h", dl.departed, ""],
     ["next 3h (est)", dl.upcoming,
-     (dl.upcoming && dl.upcoming.cancelled) ? dl.upcoming.cancelled + " cxl" : ""],
+     (dl.upcoming && dl.upcoming.cancelled) ? dl.upcoming.cancelled + " cancelled" : ""],
   ];
   const gmax = Math.max(0, ...buckets.flatMap(bk => (bk[1] && bk[1].delays_sorted) || []));
   const bars = $("delaybars");
