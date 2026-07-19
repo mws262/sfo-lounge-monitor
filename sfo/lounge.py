@@ -77,14 +77,38 @@ def fetch(full: bool = False) -> dict[str, Any]:
     doc = json.loads(raw.decode("utf-8"))
     fields = common.firestore_doc_fields(doc)
     fields["state"] = derive_state(fields)
+    fields["waitlistMode"] = waitlist_mode(fields)
     fields["waitMin"] = wait_minutes(fields.get("wait"))
     fields["_docUpdateTime"] = doc.get("updateTime")
     return fields
 
 
-def derive_state(f: dict) -> str:
-    """Human-readable lounge state from the boolean/counter fields."""
-    if f.get("isForceClosed") or not f.get("isOpen", True):
+# Posted operating hours (theclubairportlounges.com: "DAILY 04:30 - 23:30",
+# verified 2026-07-19), in minutes-of-day, America/Los_Angeles.
+#
+# Why hours matter: the Waitwhile flags describe the WAITLIST, not the door.
+# The staff keep the list force-closed whenever the room has space -- so
+# "open, walk right in" and "closed overnight" produce IDENTICAL flags
+# (isOpen=true, isForceClosed=true, all counters 0). Observed live 2026-07-19:
+# force-closed at 10:05 PT while staff console + shower bookings were active.
+OPEN_MIN = 4 * 60 + 30
+CLOSE_MIN = 23 * 60 + 30
+
+
+def in_operating_hours(now=None) -> bool:
+    """True if the posted lounge hours say the room is open right now."""
+    now = now or common.pacific_now()
+    m = now.hour * 60 + now.minute
+    return OPEN_MIN <= m < CLOSE_MIN
+
+
+def derive_state(f: dict, now=None) -> str:
+    """Lounge state from the waitlist flags + posted operating hours.
+
+    Within hours, a force-closed waitlist means "no list needed -- walk in",
+    not "lounge closed". Outside posted hours it means what it looks like.
+    """
+    if not in_operating_hours(now):
         return "CLOSED"
     if f.get("isWaitlistFull"):
         return "FULL"
@@ -93,6 +117,15 @@ def derive_state(f: dict) -> str:
     if f.get("isWaitlistOpen"):
         return "OPEN/list-on"
     return "OPEN/walk-in"
+
+
+def waitlist_mode(f: dict) -> str:
+    """What the queue system itself is doing (independent of the door)."""
+    if f.get("isWaitlistFull"):
+        return "full"
+    if f.get("isWaitlistOpen"):
+        return "open"
+    return "idle"
 
 
 def wait_minutes(wait_seconds: Any) -> int | None:
@@ -109,11 +142,11 @@ def wait_minutes(wait_seconds: Any) -> int | None:
 def hint(state: str) -> str:
     """A 'what should I do' nudge derived purely from state."""
     return {
-        "CLOSED": "don't bother - closed",
+        "CLOSED": "closed for the night (04:30-23:30 PT)",
         "FULL": "don't bother - at capacity",
         "WAITLIST": "join the list now",
         "OPEN/list-on": "walk up (list running, no queue)",
-        "OPEN/walk-in": "walk in",
+        "OPEN/walk-in": "walk in - no list running",
     }.get(state, state)
 
 
