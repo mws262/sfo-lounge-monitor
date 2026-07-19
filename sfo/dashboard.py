@@ -50,19 +50,28 @@ def _esc(s: Any) -> str:
 # --------------------------------------------------------------------------- #
 # Fragments
 # --------------------------------------------------------------------------- #
+_WT_TIP = ("Weight: this signal's share of the headline score. Unavailable "
+           "signals are dropped and the remaining weights renormalize.")
+_VAL_TIP = ("This signal now, on a 0 (clear) to 100 (rough) scale. The grey "
+            "line below shows the raw reading it was computed from.")
+
+
 def _signal_bar(label: str, value: float | None, weight: float | None,
                 summary: str) -> str:
     color = _band_color(value)
     pct = 0 if value is None else max(2, min(100, value))
     val_txt = "n/a" if value is None else f"{round(value)}"
-    wt_txt = f"{round(weight * 100)}%" if weight else "&mdash;"
+    val_tip = ("No data right now - not counted in the headline score"
+               if value is None else _VAL_TIP)
+    wt_txt = f"wt {round(weight * 100)}%" if weight else "&mdash;"
     dim = ' data-dim="1"' if value is None else ""
     return (
         f'<div class="sig"{dim}>'
         f'<div class="sig-head">'
         f'<span class="sig-label">{_esc(label)}</span>'
-        f'<span class="sig-weight">{wt_txt}</span>'
-        f'<span class="sig-val" style="color:{color}">{val_txt}</span>'
+        f'<span class="sig-weight" title="{_esc(_WT_TIP)}">{wt_txt}</span>'
+        f'<span class="sig-val" style="color:{color}" title="{_esc(val_tip)}">'
+        f'{val_txt}</span>'
         f'</div>'
         f'<div class="track"><div class="fill" style="width:{pct}%;'
         f'background:{color}"></div></div>'
@@ -211,6 +220,8 @@ body{background:var(--bg);color:var(--ink);
   letter-spacing:.12em;font-size:12px;color:var(--muted);margin-bottom:14px;}
 .card-title .dim,.dim{color:var(--muted);letter-spacing:0;text-transform:none;}
 
+.legend{font-size:11px;color:var(--muted);margin:-8px 0 14px;}
+.legend b{color:var(--ink);font-weight:600;}
 .sig{margin-bottom:15px;}
 .sig:last-child{margin-bottom:0;}
 .sig[data-dim="1"]{opacity:.5;}
@@ -338,9 +349,11 @@ def render_html(
   </div>
 
   <div class="hero">
-    <div class="score mono" style="color:{band_color}">{score_txt}</div>
+    <div class="score mono" style="color:{band_color}"
+      title="Weighted blend of the signals below: 0 = frictionless, 100 = worst realistic day.">{score_txt}</div>
     <div class="hero-body">
-      <span class="bandpill" style="background:{band_color}">{_esc(band_name)}</span>
+      <span class="bandpill" style="background:{band_color}"
+        title="Bands: quiet &lt;20 &middot; light &lt;40 &middot; moderate &lt;60 &middot; busy &lt;80 &middot; rough 80+">{_esc(band_name)}</span>
       <div class="verdict">{_verdict(score, lng)}</div>
       {missing_html}
     </div>
@@ -349,6 +362,8 @@ def render_html(
   <div class="grid">
     <div class="card">
       <div class="card-title">Airport signals</div>
+      <div class="legend">each scored <b>0</b> clear &rarr; <b>100</b> rough &middot;
+        <b>wt</b> = share of the headline score</div>
       {bars}
     </div>
     {_lounge_card(lng)}

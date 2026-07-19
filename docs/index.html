@@ -70,6 +70,8 @@ body{background:var(--bg);color:var(--ink);
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.live .beacon{animation:none !important}}
 
+.legend{font-size:11px;color:var(--muted);margin:-8px 0 14px;}
+.legend b{color:var(--ink);font-weight:600;}
 .sig{margin-bottom:15px;}
 .sig:last-child{margin-bottom:0;}
 .sig.na{opacity:.5;}
@@ -128,6 +130,8 @@ body{background:var(--bg);color:var(--ink);
   <div class="grid">
     <div class="card">
       <div class="card-title">Airport signals</div>
+      <div class="legend">each scored <b>0</b> clear &rarr; <b>100</b> rough &middot;
+        <b>wt</b> = share of the headline score</div>
       <div id="signals"></div>
     </div>
     <div class="card">
@@ -334,7 +338,10 @@ function renderAirport(d){
   $("score").innerHTML = d.score != null
     ? Math.round(d.score) + "<small>/100</small>" : "—";
   $("score").style.color = color;
+  $("score").title = "Weighted blend of the signals below: " +
+    "0 = frictionless, 100 = worst realistic day.";
   const b = $("band"); b.textContent = bandName; b.style.background = color;
+  b.title = "Bands: quiet <20 · light <40 · moderate <60 · busy <80 · rough 80+";
   lastLoungeStateFromData = d.lounge && d.lounge.state || null;
   $("verdict").textContent = verdictText(bandName, lastLoungeStateFromData);
   $("missing").textContent = (d.missing && d.missing.length)
@@ -357,10 +364,16 @@ function renderAirport(d){
     const lab = document.createElement("span"); lab.className = "sig-label";
     lab.textContent = s.label;
     const wt = document.createElement("span"); wt.className = "sig-weight";
-    wt.textContent = Math.round(s.weight * 100) + "%";
+    wt.textContent = "wt " + Math.round(s.weight * 100) + "%";
+    wt.title = "Weight: this signal's share of the headline score. " +
+      "Unavailable signals are dropped and the remaining weights renormalize.";
     const val = document.createElement("span"); val.className = "sig-val";
     val.style.color = c;
     val.textContent = s.score == null ? "n/a" : Math.round(s.score);
+    val.title = s.score == null
+      ? "No data right now - not counted in the headline score"
+      : "This signal now, on a 0 (clear) to 100 (rough) scale. " +
+        "The grey line below shows the raw reading it was computed from.";
     head.append(lab, wt, val);
     const track = document.createElement("div"); track.className = "track";
     const fill = document.createElement("div"); fill.className = "fill";
@@ -376,8 +389,10 @@ function renderAirport(d){
   const hist = d.history || [];
   const scores = hist.map(h => h.score);
   const queues = hist.map(h => h.lounge_waiting);
-  $("trend-air-label").textContent = "Airport score · last " + scores.filter(v=>v!=null).length;
-  $("trend-q-label").textContent = "Lounge queue · last " + queues.filter(v=>v!=null).length;
+  $("trend-air-label").textContent =
+    "Airport score · " + scores.filter(v=>v!=null).length + " samples @20min";
+  $("trend-q-label").textContent =
+    "Lounge queue · " + queues.filter(v=>v!=null).length + " samples @20min";
   $("trend-air-now").textContent = d.score != null ? Math.round(d.score) : "—";
   sparkline($("spark-air"), scores, color);
   sparkline($("spark-q"), queues, getComputedStyle(document.documentElement)
