@@ -49,7 +49,7 @@ def gather(
     drv = _safe(drive.fetch, cfg)
 
     subscores = {
-        "security": security.score(sec),
+        "security": security.score(sec, terminal),
         "fog": metar.score(wx),
         "departures": departures.score(dep, terminal),
         "gdp": faa.score(fa),

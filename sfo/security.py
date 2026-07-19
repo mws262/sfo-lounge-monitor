@@ -97,14 +97,28 @@ def fetch() -> dict[str, Any]:
     }
 
 
-def score(reading: dict) -> float | None:
-    """0..100 where 100 == worst line. Based on the busiest General wait.
+def _terminal_cps(reading: dict, terminal: str) -> list[dict]:
+    return [c for c in reading.get("checkpoints", [])
+            if c.get("terminal") == terminal]
 
-    Anchors: 0 min -> 0, 30 min -> 100. SFO General waits above ~30 min are
-    rare and genuinely bad; PreCheck is not scored (it stays short).
+
+def score(reading: dict, terminal: str | None = None) -> float | None:
+    """0..100 where 100 == worst. Anchors: 0 min -> 0, 30 min -> 100.
+
+    Airport-wide: the busiest General line (a busyness indicator). Scoped to a
+    terminal: the BEST General line among that terminal's checkpoints -- you'll
+    join the shorter queue, so min is the honest "your wait" number. PreCheck
+    is not scored (it stays short). SFO General waits above ~30 min are rare
+    and genuinely bad.
     """
     if not reading.get("ok"):
         return None
+    if terminal:
+        gens = [c["general_min"] for c in _terminal_cps(reading, terminal)
+                if c["general_min"] is not None]
+        if not gens:
+            return None  # no scoped data -> drop; composite renormalizes
+        return common.linscale(min(gens), 0, 30)
     worst = reading.get("max_general_min")
     if worst is None:
         return None
@@ -114,13 +128,27 @@ def score(reading: dict) -> float | None:
 def summarize(reading: dict, terminal: str | None = None) -> str:
     if not reading.get("ok"):
         return f"Security: unavailable ({reading.get('error')})"
-    cps = reading["checkpoints"]
+
     if terminal:
-        cps = [c for c in cps if c.get("terminal") == terminal] or cps
+        cps = _terminal_cps(reading, terminal)
+        if not cps:
+            return f"Security [{terminal}]: no checkpoint data"
+        best_gen = min((c for c in cps if c["general_min"] is not None),
+                       key=lambda c: c["general_min"], default=None)
+        pre = [c["precheck_min"] for c in cps if c["precheck_min"] is not None]
+        parts = []
+        if best_gen:
+            parts.append(
+                f"{best_gen['name']} ~{best_gen['general_min']}m general")
+        if pre:
+            parts.append(f"PreCheck ~{min(pre)}m")
+        body = ", ".join(parts) if parts else "no wait data"
+        return f"Security [{terminal}]: {body} (best lines)"
+
     worst = reading.get("max_general_min")
     avg = reading.get("avg_general_min")
     busiest = max(
-        (c for c in cps if c["general_min"] is not None),
+        (c for c in reading["checkpoints"] if c["general_min"] is not None),
         key=lambda c: c["general_min"],
         default=None,
     )
@@ -128,7 +156,4 @@ def summarize(reading: dict, terminal: str | None = None) -> str:
         f", busiest {busiest['name']} {busiest['general_min']}m"
         if busiest else ""
     )
-    scope = f" [{terminal}]" if terminal else ""
-    return (
-        f"Security{scope}: avg ~{avg}m, worst ~{worst}m general{busiest_txt}"
-    )
+    return f"Security: avg ~{avg}m, worst ~{worst}m general{busiest_txt}"

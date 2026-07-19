@@ -109,9 +109,17 @@ The hosted setup lives in `docs/` + `.github/workflows/update.yml`:
   Waitwhile's own public web key), so the **lounge readout is live** with no
   backend. Background tabs pause polling after the first fetch.
 - **`docs/data.json`** — regenerated every ~20 min by a GitHub Actions cron
-  running `python -m sfo.publish --dir docs` (stdlib only, no pip step). Carries
-  the composite, per-signal summaries, and a rolling 7-day history for the
-  sparklines. History lives inside the JSON — no database in the repo.
+  running `python -m sfo.publish --dir docs --terminal T1` (stdlib only, no pip
+  step). Carries the composite, per-signal summaries, and a rolling 7-day
+  history for the sparklines. History lives inside the JSON — no database in
+  the repo.
+
+  The published dashboard is **scoped to T1** (Harvey Milk — where Club SFO
+  is): security scores the *best* General line among T1's checkpoints (you'll
+  join the shorter queue; airport-wide mode scores the busiest line as a
+  congestion indicator), and departures count T1 only. Fog and ground-delay
+  stay airport-wide — they're runway-level. Drop the `--terminal` flag in the
+  workflow for an airport-wide page.
 
 Setup, one time:
 

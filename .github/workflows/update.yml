@@ -23,9 +23,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      # stdlib only -- no pip install step
+      # stdlib only -- no pip install step.
+      # Scoped to T1 (Harvey Milk / Club SFO): security scores the best T1
+      # line, departures count T1 only; fog + ground delay stay airport-wide.
       - name: Refresh data.json
-        run: python -m sfo.publish --dir docs
+        run: python -m sfo.publish --dir docs --terminal T1
 
       - name: Commit if changed
         run: |
