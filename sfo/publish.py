@@ -54,6 +54,10 @@ def build_payload(bundle: dict, prev_history: list[dict],
          "summary": drive.summarize(bundle.get("drive") or {})},
     ]
 
+    dep = bundle.get("departures") or {}
+    delays = ((dep.get("delays_by_terminal") or {}).get(terminal)
+              if terminal else dep.get("delays")) or None
+
     now_utc = datetime.now(timezone.utc).isoformat(timespec="seconds")
     entry = {
         "ts": now_utc,
@@ -70,6 +74,7 @@ def build_payload(bundle: dict, prev_history: list[dict],
         "band": band(comp.get("score")),
         "missing": comp.get("missing") or [],
         "signals": signals,
+        "delays": delays,  # scoped delay stats (n/pct/median/max/cancelled)
         "board_updated": (bundle.get("departures") or {}).get("board_updated"),
         "lounge": lng if lng.get("ok") is not False else {"error": lng.get("error")},
         "history": history,

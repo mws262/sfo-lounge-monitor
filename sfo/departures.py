@@ -104,6 +104,58 @@ def _parse(t: str | None) -> datetime | None:
         return None
 
 
+# Delay-stat sample: departures scheduled in [now-1h, now+3h]. Wider than the
+# 90-min count window so the percentages aren't noise when a terminal only has
+# a dozen upcoming flights. Recently-departed flights contribute their ACTUAL
+# delay; upcoming ones their current estimate.
+DELAY_LOOKBACK_MIN = 60
+DELAY_LOOKAHEAD_MIN = 180
+DELAY_THRESHOLD_MIN = 15  # DOT's standard "delayed" cutoff
+
+
+def _delay_minutes(r: dict) -> float | None:
+    """Actual/estimated departure minus scheduled, in minutes. None if unknown."""
+    sched = _parse(_sched(r))
+    best = _parse(r.get("actual_aod_time")) or _parse(r.get("estimated_aod_time"))
+    if not (sched and best):
+        return None
+    return max(0.0, (best - sched).total_seconds() / 60)
+
+
+def _delay_stats(deps: list[dict], ref: datetime,
+                 terminal: str | None) -> dict[str, Any]:
+    import statistics
+
+    lo = ref - timedelta(minutes=DELAY_LOOKBACK_MIN)
+    hi = ref + timedelta(minutes=DELAY_LOOKAHEAD_MIN)
+    delays: list[float] = []
+    cancelled = 0
+    for r in deps:
+        if terminal and _terminal(r) != terminal:
+            continue
+        t = _parse(_sched(r))
+        if not (t and lo <= t <= hi):
+            continue
+        remark = (r.get("remark") or "").lower()
+        if any(h in remark for h in _CANCEL_HINTS):
+            cancelled += 1
+            continue
+        d = _delay_minutes(r)
+        if d is not None:
+            delays.append(d)
+
+    late = [d for d in delays if d >= DELAY_THRESHOLD_MIN]
+    n = len(delays)
+    return {
+        "n": n,
+        "cancelled": cancelled,
+        "delayed_n": len(late),
+        "delayed_pct": round(len(late) / n * 100) if n else None,
+        "median_delay_min": round(statistics.median(late)) if late else None,
+        "max_delay_min": round(max(late)) if late else None,
+    }
+
+
 def fetch(
     cfg: Config | None = None,
     window_min: int = 90,
@@ -115,8 +167,9 @@ def fetch(
     """Count physical PAX departures scheduled in the next `window_min`.
 
     `now` (tz-aware) is injectable for testing; defaults to Pacific now.
-    Returns airport-wide totals, a per-terminal breakdown, and a
-    delayed/cancelled tally within the window.
+    Returns airport-wide totals, a per-terminal breakdown, remark-based
+    delayed/cancelled tallies in the count window, and computed delay
+    distributions (airport-wide + per terminal) over a wider sample window.
     """
     try:
         board = _load_board(cache_dir, cache_ttl, force_refresh)
@@ -152,6 +205,9 @@ def fetch(
         "by_terminal": per_terminal,
         "delayed": delayed,
         "cancelled": cancelled,
+        "delays": _delay_stats(deps, ref, None),
+        "delays_by_terminal": {t: _delay_stats(deps, ref, t)
+                               for t in TERMINALS},
     }
 
 
@@ -173,15 +229,34 @@ def summarize(reading: dict, terminal: str | None = None) -> str:
     if terminal:
         n = reading["by_terminal"].get(terminal, 0)
         scope = f" from {terminal}"
+        st = (reading.get("delays_by_terminal") or {}).get(terminal) or {}
     else:
         n = reading["next_window"]
         scope = ""
-    extra = ""
-    if reading.get("cancelled") or reading.get("delayed"):
-        extra = f" ({reading['delayed']} delayed, {reading['cancelled']} cxl)"
+        st = reading.get("delays") or {}
     bt = reading["by_terminal"]
     bd = " ".join(f"{k}:{v}" for k, v in bt.items() if v)
     return (
-        f"Departures{scope}: {n} scheduled in next {w}m{extra}"
+        f"Departures{scope}: {n} scheduled in next {w}m"
         + (f" [{bd}]" if bd and not terminal else "")
+        + " | " + delay_summary(st)
     )
+
+
+def delay_summary(st: dict) -> str:
+    """Human line for a _delay_stats dict, e.g.
+    'delays: 8/13 >=15m (62%), median 34m, worst 95m, 1 cxl'."""
+    if not st or not st.get("n"):
+        return "delays: no data"
+    if not st.get("delayed_n"):
+        cxl = f", {st['cancelled']} cxl" if st.get("cancelled") else ""
+        return f"delays: none of {st['n']} flights{cxl}"
+    bits = [
+        f"delays: {st['delayed_n']}/{st['n']} >={DELAY_THRESHOLD_MIN}m "
+        f"({st['delayed_pct']}%)",
+        f"median {st['median_delay_min']}m",
+        f"worst {st['max_delay_min']}m",
+    ]
+    if st.get("cancelled"):
+        bits.append(f"{st['cancelled']} cxl")
+    return ", ".join(bits)

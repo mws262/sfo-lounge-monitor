@@ -210,6 +210,9 @@ body{background:var(--bg);color:var(--ink);
   text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:600;
   color:#fff;padding:3px 10px;border-radius:999px;}
 .verdict{font-size:17px;text-wrap:balance;max-width:46ch;}
+.delayline{font-size:13px;color:var(--muted);}
+.delayline b{color:var(--ink);font-weight:600;font-family:ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;}
 .missing{font-size:12px;color:var(--muted);}
 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
@@ -309,6 +312,29 @@ def render_html(
     missing_html = (f'<div class="missing">not counted: {_esc(", ".join(missing))} '
                     f'(weights renormalized)</div>' if missing else "")
 
+    # Explicit delay stats line (scoped to the terminal when one is set).
+    dep_reading = bundle.get("departures") or {}
+    dl = ((dep_reading.get("delays_by_terminal") or {}).get(terminal)
+          if terminal else dep_reading.get("delays")) or {}
+    delays_html = ""
+    if dl.get("n"):
+        scope_txt = (f"{_esc(terminal)} " if terminal else "") + "flight delays"
+        if not dl.get("delayed_n"):
+            cxl = f", {dl['cancelled']} cancelled" if dl.get("cancelled") else ""
+            delays_html = (f'<div class="delayline">{scope_txt}: none among '
+                           f'{dl["n"]} flights (last 1h + next 3h){cxl}</div>')
+        else:
+            cxl = (f' &middot; {dl["cancelled"]} cancelled'
+                   if dl.get("cancelled") else "")
+            delays_html = (
+                f'<div class="delayline" title="Departures scheduled in the '
+                f'last hour + next 3 hours; delay = estimated/actual departure '
+                f'vs schedule. 15 min is the standard cutoff.">'
+                f'{scope_txt}: <b>{dl["delayed_n"]}/{dl["n"]}</b> flights '
+                f'&ge;15m late ({dl["delayed_pct"]}%) &middot; median '
+                f'<b>{dl["median_delay_min"]}m</b> &middot; worst '
+                f'<b>{dl["max_delay_min"]}m</b>{cxl}</div>')
+
     # Trends
     ap_scores = [r.get("score") for r in airport_hist]
     lounge_q = [r.get("numWaiting") for r in lounge_hist]
@@ -355,6 +381,7 @@ def render_html(
       <span class="bandpill" style="background:{band_color}"
         title="Bands: quiet &lt;20 &middot; light &lt;40 &middot; moderate &lt;60 &middot; busy &lt;80 &middot; rough 80+">{_esc(band_name)}</span>
       <div class="verdict">{_verdict(score, lng)}</div>
+      {delays_html}
       {missing_html}
     </div>
   </div>

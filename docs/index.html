@@ -51,6 +51,9 @@ body{background:var(--bg);color:var(--ink);
   text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:600;
   color:#fff;padding:3px 10px;border-radius:999px;background:var(--muted);}
 .verdict{font-size:17px;text-wrap:balance;max-width:46ch;}
+.delayline{font-size:13px;color:var(--muted);}
+.delayline b{color:var(--ink);font-weight:600;font-family:ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;}
 .missing{font-size:12px;color:var(--muted);}
 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
@@ -123,6 +126,7 @@ body{background:var(--bg);color:var(--ink);
     <div class="hero-body">
       <span class="bandpill" id="band">loading</span>
       <div class="verdict" id="verdict">Fetching the latest from SFO&hellip;</div>
+      <div class="delayline" id="delays"></div>
       <div class="missing" id="missing"></div>
     </div>
   </div>
@@ -344,6 +348,29 @@ function renderAirport(d){
   b.title = "Bands: quiet <20 · light <40 · moderate <60 · busy <80 · rough 80+";
   lastLoungeStateFromData = d.lounge && d.lounge.state || null;
   $("verdict").textContent = verdictText(bandName, lastLoungeStateFromData);
+
+  // Explicit delay stats: portion of flights >=15m late, median, worst.
+  const dl = d.delays, dEl = $("delays");
+  dEl.textContent = "";
+  if(dl && dl.n){
+    const scopeTxt = (d.terminal ? d.terminal + " " : "") + "flight delays";
+    if(!dl.delayed_n){
+      dEl.append(scopeTxt + ": none among " + dl.n + " flights (last 1h + next 3h)"
+        + (dl.cancelled ? ", " + dl.cancelled + " cancelled" : ""));
+    }else{
+      const b = (t) => { const el = document.createElement("b");
+        el.textContent = t; return el; };
+      dEl.append(scopeTxt + ": ");
+      dEl.append(b(dl.delayed_n + "/" + dl.n));
+      dEl.append(" flights ≥15m late (" + dl.delayed_pct + "%) · median ");
+      dEl.append(b(dl.median_delay_min + "m"));
+      dEl.append(" · worst ");
+      dEl.append(b(dl.max_delay_min + "m"));
+      if(dl.cancelled) dEl.append(" · " + dl.cancelled + " cancelled");
+      dEl.title = "Departures scheduled in the last hour + next 3 hours; delay = "
+        + "estimated/actual departure vs schedule. 15 min is the standard cutoff.";
+    }
+  }
   $("missing").textContent = (d.missing && d.missing.length)
     ? "not counted: " + d.missing.join(", ") + " (weights renormalized)" : "";
   $("scope").textContent = d.terminal ? " · " + d.terminal : "";
