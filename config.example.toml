@@ -1,0 +1,16 @@
+# Copy to config.toml and fill in. NOTHING here is required for the
+# confirmed-working signals (lounge, security, weather/fog, FAA ground delays,
+# and scheduled departures -- all keyless). Only drive time (Google) needs a
+# credential, and it stays inert until configured.
+#
+# Every value can also be set via an env var: SFO_<SECTION>_<KEY>, e.g.
+#   SFO_GOOGLE_ROUTES_API_KEY, SFO_DRIVE_ORIGIN.
+# Env vars win over this file (handy for systemd EnvironmentFile= secrets).
+
+[google]
+# Google Cloud "Routes API" key. Without it, the composite drops "drive".
+routes_api_key = ""
+
+[drive]
+# Your departure origin -- "lat,lng" or a street address. Not hardcoded.
+origin = ""

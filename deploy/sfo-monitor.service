@@ -1,0 +1,16 @@
+[Unit]
+Description=SFO busyness + Club SFO lounge one-shot poll
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Adjust User/paths to your VPS. Keep secrets in an EnvironmentFile, not here.
+User=sfo
+WorkingDirectory=/opt/sfo-lounge-monitor
+EnvironmentFile=-/opt/sfo-lounge-monitor/sfo.env
+# The timer fires this on a tight lounge cadence; --cache-dir lets the flight
+# board's 20-min TTL persist across these one-shot runs, so the heavy board is
+# pulled only ~3x/hour while the lounge refreshes every timer tick.
+ExecStart=/usr/bin/python3 -m sfo --db /var/lib/sfo/club_sfo.db --cache-dir /var/lib/sfo
+Nice=10

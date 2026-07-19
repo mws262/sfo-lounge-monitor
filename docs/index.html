@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFO Now</title>
+<style>
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --ink:#1a1f2b; --muted:#5b6474;
+  --hair:#e4e8ee; --accent:#e0920c;
+  --shadow:0 1px 2px rgba(20,28,45,.06),0 8px 24px rgba(20,28,45,.05);
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0e1116; --surface:#171b22; --ink:#e8ecf2; --muted:#9aa4b2;
+    --hair:#262c36; --accent:#f5a524; --shadow:0 1px 2px rgba(0,0,0,.4); }
+}
+:root[data-theme="light"]{ --bg:#f6f7f9; --surface:#ffffff; --ink:#1a1f2b;
+  --muted:#5b6474; --hair:#e4e8ee; --accent:#e0920c;
+  --shadow:0 1px 2px rgba(20,28,45,.06),0 8px 24px rgba(20,28,45,.05); }
+:root[data-theme="dark"]{ --bg:#0e1116; --surface:#171b22; --ink:#e8ecf2;
+  --muted:#9aa4b2; --hair:#262c36; --accent:#f5a524;
+  --shadow:0 1px 2px rgba(0,0,0,.4); }
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  line-height:1.5;-webkit-font-smoothing:antialiased;}
+.mono{font-family:ui-monospace,"SFMono-Regular","Cascadia Code",Menlo,Consolas,
+  monospace;font-variant-numeric:tabular-nums;}
+.wrap{max-width:900px;margin:0 auto;padding:28px 20px 48px;}
+
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  border-bottom:1px solid var(--hair);padding-bottom:14px;margin-bottom:22px;}
+.brand{font-family:ui-monospace,monospace;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;font-size:13px;color:var(--muted);}
+.brand b{color:var(--ink);}
+.brand .dot{color:var(--accent);}
+.fresh{font-size:12px;color:var(--muted);text-align:right;}
+.fresh .mono{color:var(--ink);}
+.stale{color:#d64545;font-weight:600;}
+
+.hero{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;
+  background:var(--surface);border:1px solid var(--hair);border-radius:16px;
+  padding:22px 24px;box-shadow:var(--shadow);margin-bottom:18px;}
+.score{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:64px;line-height:.9;font-weight:600;letter-spacing:-.02em;}
+.score small{font-size:20px;color:var(--muted);font-weight:500;}
+.hero-body{display:flex;flex-direction:column;gap:8px;}
+.bandpill{align-self:flex-start;font-family:ui-monospace,monospace;
+  text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:600;
+  color:#fff;padding:3px 10px;border-radius:999px;background:var(--muted);}
+.verdict{font-size:17px;text-wrap:balance;max-width:46ch;}
+.missing{font-size:12px;color:var(--muted);}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.hero{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--hair);border-radius:16px;
+  padding:18px 20px;box-shadow:var(--shadow);}
+.card-title{font-family:ui-monospace,monospace;text-transform:uppercase;
+  letter-spacing:.12em;font-size:12px;color:var(--muted);margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;}
+.card-title .dim{color:var(--muted);letter-spacing:0;text-transform:none;}
+
+.live{display:inline-flex;align-items:center;gap:5px;margin-left:auto;
+  font-size:10px;letter-spacing:.1em;}
+.live .beacon{width:7px;height:7px;border-radius:50%;background:#2fa76a;}
+.live.ok .beacon{animation:pulse 2s ease-in-out infinite;}
+.live.err .beacon{background:#d64545;animation:none;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.live .beacon{animation:none !important}}
+
+.sig{margin-bottom:15px;}
+.sig:last-child{margin-bottom:0;}
+.sig.na{opacity:.5;}
+.sig-head{display:flex;align-items:baseline;gap:8px;margin-bottom:5px;}
+.sig-label{font-family:ui-monospace,monospace;font-size:13px;font-weight:600;}
+.sig-weight{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);}
+.sig-val{margin-left:auto;font-family:ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;}
+.track{height:6px;border-radius:4px;background:var(--hair);overflow:hidden;}
+.fill{height:100%;border-radius:4px;transition:width .3s;}
+.sig-sum{font-size:12px;color:var(--muted);margin-top:5px;}
+
+.lounge-state{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.pill{font-family:ui-monospace,monospace;text-transform:uppercase;
+  letter-spacing:.08em;font-size:12px;font-weight:600;color:#fff;
+  background:var(--muted);padding:4px 11px;border-radius:999px;}
+.lounge-hint{font-size:13px;color:var(--muted);}
+.joined{font-size:12px;color:var(--accent);font-family:ui-monospace,monospace;}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px 10px;}
+.m-val{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:22px;font-weight:600;}
+.m-lab{font-size:11px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.06em;}
+.unavail{color:var(--muted);font-size:14px;}
+
+.trends{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:720px){.trends{grid-template-columns:1fr}}
+.trend-title{display:flex;justify-content:space-between;align-items:baseline;
+  font-family:ui-monospace,monospace;text-transform:uppercase;
+  letter-spacing:.12em;font-size:12px;color:var(--muted);margin-bottom:10px;}
+.trend-now{color:var(--ink);font-weight:600;}
+.spark{width:100%;height:44px;display:block;}
+.spark-empty{font-size:12px;color:var(--muted);padding:12px 0;}
+
+.foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--hair);
+  font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><span class="dot">&#9679;</span> SFO <b>NOW</b><span id="scope"></span></div>
+    <div class="fresh">airport data <span class="mono" id="fresh-air">&mdash;</span>
+      <br>lounge <span class="mono" id="fresh-lounge">&mdash;</span></div>
+  </div>
+
+  <div class="hero">
+    <div class="score mono" id="score">&mdash;</div>
+    <div class="hero-body">
+      <span class="bandpill" id="band">loading</span>
+      <div class="verdict" id="verdict">Fetching the latest from SFO&hellip;</div>
+      <div class="missing" id="missing"></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">Airport signals</div>
+      <div id="signals"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Club SFO <span class="dim">&middot; T1 Priority Pass</span>
+        <span class="live" id="live"><span class="beacon"></span>LIVE</span></div>
+      <div id="lounge"><div class="unavail">connecting&hellip;</div></div>
+    </div>
+  </div>
+
+  <div class="trends">
+    <div class="card">
+      <div class="trend-title"><span id="trend-air-label">Airport score</span>
+        <span class="trend-now mono" id="trend-air-now">&mdash;</span></div>
+      <div id="spark-air"><div class="spark-empty">not enough history yet</div></div>
+    </div>
+    <div class="card">
+      <div class="trend-title"><span id="trend-q-label">Lounge queue</span>
+        <span class="trend-now mono" id="trend-q-now">&mdash;</span></div>
+      <div id="spark-q"><div class="spark-empty">not enough history yet</div></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>Composite is airport friction only; the lounge is tracked separately.</span>
+    <span>Sources: flysfo &middot; NWS/AWC METAR &middot; FAA ASWS &middot; Waitwhile</span>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------ config */
+const FS_DOC = "https://firestore.googleapis.com/v1/projects/waitwhile-app/" +
+  "databases/(default)/documents/location-status/o0Sz5GVh6nIrQet8Ifbi";
+const FS_KEY = "AIzaSyCIyFv4AQyk0g8pFAdC26eGgV3J-IQAlJs"; // Waitwhile's public web key
+const FS_MASK = ["isOpen","isForceClosed","isWaitlistOpen","isWaitlistFull",
+  "numWaiting","numWaitingGuests","numServing","numServingGuests","wait",
+  "naEstWaitReason","nextTicket","updated"];
+const LOUNGE_POLL_MS = 60000;   // courtesy floor: same doc a walk-in loads
+const DATA_POLL_MS   = 5 * 60000;
+const STALE_AIR_MIN  = 45;      // cron should land every 20 min
+
+const BANDS = [[20,"quiet","#2fa76a"],[40,"light","#7aa63c"],
+  [60,"moderate","#d99a2b"],[80,"busy","#e2792e"],[101,"rough","#d64545"]];
+const MUTED = "#8b93a1";
+const LOUNGE_COLORS = {CLOSED:MUTED, FULL:"#d64545", WAITLIST:"#d99a2b",
+  "OPEN/list-on":"#2fa76a", "OPEN/walk-in":"#2fa76a"};
+const HINTS = {CLOSED:"don't bother - closed", FULL:"don't bother - at capacity",
+  WAITLIST:"join the list now", "OPEN/list-on":"walk up (list running, no queue)",
+  "OPEN/walk-in":"walk in"};
+
+/* ------------------------------------------------------------------ utils */
+const $ = id => document.getElementById(id);
+function bandOf(v){ if(v==null) return ["unknown",MUTED];
+  for(const [hi,name,c] of BANDS) if(v<hi) return [name,c];
+  return ["rough","#d64545"]; }
+function ptTime(iso){ try{ return new Intl.DateTimeFormat("en-US",
+  {timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit"})
+  .format(new Date(iso)); }catch(e){ return "?"; } }
+function agoMin(iso){ return Math.round((Date.now()-new Date(iso).getTime())/60000); }
+
+/* Firestore typed-value decoder (port of sfo/common.firestore_decode) */
+function dec(v){
+  if(v==null || typeof v!=="object") return v;
+  if("integerValue" in v) return parseInt(v.integerValue,10);
+  if("doubleValue" in v) return v.doubleValue;
+  if("booleanValue" in v) return v.booleanValue;
+  if("stringValue" in v) return v.stringValue;
+  if("timestampValue" in v) return v.timestampValue;
+  if("nullValue" in v) return null;
+  if("mapValue" in v){ const o={},f=v.mapValue.fields||{};
+    for(const k in f) o[k]=dec(f[k]); return o; }
+  if("arrayValue" in v) return (v.arrayValue.values||[]).map(dec);
+  if("fields" in v){ const o={}; for(const k in v.fields) o[k]=dec(v.fields[k]);
+    return o; }
+  return v;
+}
+function deriveState(f){
+  if(f.isForceClosed || f.isOpen===false) return "CLOSED";
+  if(f.isWaitlistFull) return "FULL";
+  if(f.isWaitlistOpen && (f.numWaiting||0)>0) return "WAITLIST";
+  if(f.isWaitlistOpen) return "OPEN/list-on";
+  return "OPEN/walk-in";
+}
+
+function sparkline(container, values, color){
+  const pts = values.filter(v => v!=null);
+  if(pts.length < 2){ container.innerHTML =
+    '<div class="spark-empty">not enough history yet</div>'; return; }
+  const W=260, H=44, lo=Math.min(...pts), hi=Math.max(...pts), span=(hi-lo)||1;
+  const n=pts.length;
+  const x=i => (i/(n-1)*(W-4)+2).toFixed(1);
+  const y=v => (H-4-(v-lo)/span*(H-12)+2).toFixed(1);
+  const line = pts.map((v,i)=>x(i)+","+y(v)).join(" ");
+  const area = "2,"+(H-2)+" "+line+" "+(W-2)+","+(H-2);
+  container.innerHTML =
+    '<svg viewBox="0 0 '+W+' '+H+'" class="spark" preserveAspectRatio="none" role="img" aria-label="trend">'+
+    '<polyline points="'+area+'" fill="'+color+'" fill-opacity="0.10" stroke="none"/>'+
+    '<polyline points="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.6" '+
+    'stroke-linejoin="round" stroke-linecap="round"/>'+
+    '<circle cx="'+x(n-1)+'" cy="'+y(pts[n-1])+'" r="2.6" fill="'+color+'"/></svg>';
+}
+
+/* ------------------------------------------------------------ lounge (live) */
+let lastTicket = null, lastJoinNote = "", loungeBooted = false;
+async function pollLounge(){
+  // Courtesy: don't poll from background tabs -- but always do the first
+  // fetch so a tab opened in the background still renders once.
+  if(loungeBooted && document.hidden) return;
+  loungeBooted = true;
+  const url = FS_DOC + "?key=" + FS_KEY +
+    FS_MASK.map(f => "&mask.fieldPaths=" + f).join("");
+  try{
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const f = dec(await r.json());
+    renderLounge(f);
+    $("live").className = "live ok";
+    $("fresh-lounge").textContent = "live · " + ptTime(new Date().toISOString()) + " PT";
+  }catch(e){
+    $("live").className = "live err";
+    $("fresh-lounge").textContent = "unreachable";
+  }
+}
+function renderLounge(f){
+  const state = deriveState(f);
+  const color = LOUNGE_COLORS[state] || MUTED;
+  const wm = (typeof f.wait === "number" && f.wait >= 0) ? Math.round(f.wait/60) : null;
+  if(lastTicket != null && typeof f.nextTicket === "number" && f.nextTicket > lastTicket)
+    lastJoinNote = "+" + (f.nextTicket - lastTicket) + " joined";
+  if(typeof f.nextTicket === "number") lastTicket = f.nextTicket;
+
+  const el = $("lounge");
+  el.textContent = "";
+  const stateRow = document.createElement("div");
+  stateRow.className = "lounge-state";
+  const pill = document.createElement("span");
+  pill.className = "pill"; pill.style.background = color; pill.textContent = state;
+  const hint = document.createElement("span");
+  hint.className = "lounge-hint"; hint.textContent = HINTS[state] || "";
+  stateRow.append(pill, hint);
+  if(lastJoinNote){ const j = document.createElement("span");
+    j.className = "joined"; j.textContent = lastJoinNote; stateRow.append(j); }
+  const met = document.createElement("div");
+  met.className = "metrics";
+  const items = [
+    [wm != null ? wm + " min" : "—", "est wait"],
+    [f.numWaiting ?? 0, "parties ahead"],
+    [f.numWaitingGuests ?? 0, "guests waiting"],
+    [f.numServing ?? 0, "now serving"]];
+  for(const [v,lab] of items){
+    const m = document.createElement("div"); m.className = "metric";
+    const mv = document.createElement("div"); mv.className = "m-val mono";
+    mv.textContent = v;
+    const ml = document.createElement("div"); ml.className = "m-lab";
+    ml.textContent = lab;
+    m.append(mv, ml); met.append(m);
+  }
+  el.append(stateRow, met);
+  $("trend-q-now").textContent = f.numWaiting ?? "—";
+}
+
+/* --------------------------------------------------------- airport (cron) */
+function verdictText(bandName, loungeState){
+  const a = {quiet:"Smooth sailing at SFO right now.",
+    light:"SFO is moving well.",
+    moderate:"SFO is filling up — leave a little early.",
+    busy:"SFO is busy — give yourself extra time.",
+    rough:"SFO is rough right now — pad your schedule.",
+    unknown:"SFO status is partial right now."}[bandName] || "";
+  const t = {FULL:" The lounge is at capacity.",
+    WAITLIST:" The lounge has a waitlist running.",
+    CLOSED:" The lounge is closed.",
+    "OPEN/walk-in":" The lounge is open for walk-ins.",
+    "OPEN/list-on":" The lounge is open (list running, no queue)."}[loungeState] || "";
+  return a + t;
+}
+let lastLoungeStateFromData = null;
+async function loadData(){
+  try{
+    const r = await fetch("data.json?t=" + Date.now());
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    renderAirport(d);
+  }catch(e){
+    $("verdict").textContent = "Airport data unavailable (" + e.message + ").";
+  }
+}
+function renderAirport(d){
+  const [bandName, color] = bandOf(d.score);
+  $("score").innerHTML = d.score != null
+    ? Math.round(d.score) + "<small>/100</small>" : "—";
+  $("score").style.color = color;
+  const b = $("band"); b.textContent = bandName; b.style.background = color;
+  lastLoungeStateFromData = d.lounge && d.lounge.state || null;
+  $("verdict").textContent = verdictText(bandName, lastLoungeStateFromData);
+  $("missing").textContent = (d.missing && d.missing.length)
+    ? "not counted: " + d.missing.join(", ") + " (weights renormalized)" : "";
+  $("scope").textContent = d.terminal ? " · " + d.terminal : "";
+
+  const mins = agoMin(d.generated);
+  const fa = $("fresh-air");
+  fa.textContent = mins <= 1 ? "just now" : mins + "m ago";
+  fa.className = "mono" + (mins > STALE_AIR_MIN ? " stale" : "");
+
+  const sig = $("signals");
+  sig.textContent = "";
+  for(const s of (d.signals || [])){
+    const [,sc] = [null, s.score];
+    const c = s.score == null ? MUTED : bandOf(s.score)[1];
+    const row = document.createElement("div");
+    row.className = "sig" + (s.score == null ? " na" : "");
+    const head = document.createElement("div"); head.className = "sig-head";
+    const lab = document.createElement("span"); lab.className = "sig-label";
+    lab.textContent = s.label;
+    const wt = document.createElement("span"); wt.className = "sig-weight";
+    wt.textContent = Math.round(s.weight * 100) + "%";
+    const val = document.createElement("span"); val.className = "sig-val";
+    val.style.color = c;
+    val.textContent = s.score == null ? "n/a" : Math.round(s.score);
+    head.append(lab, wt, val);
+    const track = document.createElement("div"); track.className = "track";
+    const fill = document.createElement("div"); fill.className = "fill";
+    fill.style.width = (s.score == null ? 0 : Math.max(2, Math.min(100, s.score))) + "%";
+    fill.style.background = c;
+    track.append(fill);
+    const sum = document.createElement("div"); sum.className = "sig-sum";
+    sum.textContent = s.summary || "";
+    row.append(head, track, sum);
+    sig.append(row);
+  }
+
+  const hist = d.history || [];
+  const scores = hist.map(h => h.score);
+  const queues = hist.map(h => h.lounge_waiting);
+  $("trend-air-label").textContent = "Airport score · last " + scores.filter(v=>v!=null).length;
+  $("trend-q-label").textContent = "Lounge queue · last " + queues.filter(v=>v!=null).length;
+  $("trend-air-now").textContent = d.score != null ? Math.round(d.score) : "—";
+  sparkline($("spark-air"), scores, color);
+  sparkline($("spark-q"), queues, getComputedStyle(document.documentElement)
+    .getPropertyValue("--accent").trim() || "#f5a524");
+}
+
+/* ------------------------------------------------------------------ boot */
+loadData(); pollLounge();
+setInterval(loadData, DATA_POLL_MS);
+setInterval(pollLounge, LOUNGE_POLL_MS);
+document.addEventListener("visibilitychange", () => { if(!document.hidden) pollLounge(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Secrets & local data
+config.toml
+sfo.env
+*.db
+*.har
+capture.har
+flysfo_board.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local tooling
+.claude/
