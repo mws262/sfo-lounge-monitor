@@ -39,7 +39,8 @@ def build_payload(bundle: dict, prev_history: list[dict],
          "summary": security.summarize(bundle.get("security") or {}, terminal)},
         {"key": "fog", "label": "Fog", "weight": WEIGHTS["fog"][0],
          "score": subs.get("fog"),
-         "summary": metar.summarize(bundle.get("weather") or {})},
+         "summary": metar.summarize(bundle.get("weather") or {}),
+         "note": metar.SCALE_NOTE},
         # Departures still contributes to the composite (subscores/gather),
         # but is intentionally omitted from the visible signal list -- the
         # flight-delay bars carry the departure story on their own card.

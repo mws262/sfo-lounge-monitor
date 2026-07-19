@@ -473,10 +473,11 @@ function renderAirport(d){
     const val = document.createElement("span"); val.className = "sig-val";
     val.style.color = c;
     val.textContent = s.score == null ? "n/a" : Math.round(s.score);
-    val.title = s.score == null
+    val.title = (s.score == null
       ? "No data right now - not counted in the headline score"
       : "This signal now, on a 0 (clear) to 100 (rough) scale. " +
-        "The grey line below shows the raw reading it was computed from.";
+        "The grey line below shows the raw reading it was computed from.")
+      + (s.note ? "\n\n" + s.note : "");
     head.append(lab, wt, val);
     const track = document.createElement("div"); track.className = "track";
     const fill = document.createElement("div"); fill.className = "fill";
