@@ -170,24 +170,25 @@ def _join_planner(lng: dict, sec_wait_min: int | None) -> str:
     from .lounge import QR_PAGE
     wm = lng.get("waitMin")
     if wm is None:
-        lead_html = "no wait estimate right now &middot; "
+        lead_html = "no wait estimate right now"
     elif sec_wait_min is None:
-        lead_html = "security wait unknown - can't estimate &middot; "
+        lead_html = "security wait unknown - can't estimate"
     else:
         lead = wm - sec_wait_min - WALK_MIN
         if lead > 0:
-            lead_html = f"join ~<b>{lead}m</b> before you arrive at SFO &middot; "
+            lead_html = f"join <b>~{lead}m</b> before you arrive at SFO"
         elif lead >= -GRACE_MIN:
-            lead_html = "join when you arrive at SFO &middot; "
+            lead_html = "join when you arrive at SFO"
         else:
-            lead_html = "short wait - join after clearing security &middot; "
+            lead_html = "short wait - join after clearing security"
     tip = (f"Timed so you're called about when you reach the lounge door: "
            f"quoted wait {'~' + str(wm) + 'm' if wm is not None else 'n/a'}, "
            f"entrance to door = security "
            f"{'~' + str(sec_wait_min) + 'm' if sec_wait_min is not None else '?'} "
            f"+ {WALK_MIN}m walk. The {GRACE_MIN}-min grace after being called "
            f"is kept as buffer in case the line moves faster than quoted.")
-    return (f'<div class="planner" title="{_esc(tip)}">{lead_html}'
+    return (f'<div class="planner" title="{_esc(tip)}">'
+            f'<div class="planner-lead">{lead_html}</div>'
             f'<a href="{QR_PAGE}" target="_blank" rel="noopener">'
             f'open waitlist &#8599;</a></div>')
 
@@ -348,11 +349,14 @@ body{background:var(--bg);color:var(--ink);
   letter-spacing:.08em;font-size:12px;font-weight:600;color:#fff;
   background:var(--pill);padding:4px 11px;border-radius:999px;}
 .lounge-hint{font-size:13px;color:var(--muted);}
-.planner{font-size:13px;color:var(--muted);margin:-6px 0 14px;}
-.planner b{color:var(--ink);font-weight:600;font-family:ui-monospace,monospace;
-  font-variant-numeric:tabular-nums;}
-.planner a{color:var(--accent);font-weight:600;text-decoration:none;
-  white-space:nowrap;}
+.planner{text-align:center;margin:4px 0 18px;padding:14px 12px;
+  border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);}
+.planner-lead{font-size:16px;color:var(--ink);line-height:1.3;text-wrap:balance;}
+.planner-lead b{font-size:30px;font-weight:700;color:var(--accent);
+  font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  vertical-align:-3px;padding:0 2px;}
+.planner a{display:inline-block;margin-top:8px;font-size:13px;color:var(--accent);
+  font-weight:600;text-decoration:none;white-space:nowrap;}
 .planner a:hover,.planner a:focus{text-decoration:underline;}
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px 10px;}
 .metric{}
