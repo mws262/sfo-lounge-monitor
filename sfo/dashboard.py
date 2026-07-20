@@ -235,10 +235,29 @@ def _lounge_card(lng: dict, sec_wait_min: int | None = None) -> str:
     color = _LOUNGE_COLORS.get(state, _MUTED)
     wm = lng.get("waitMin")
     wait_txt = f"{wm} min" if wm is not None else "&mdash;"
-    ahead = lng.get("numWaiting") or 0
-    guests = lng.get("numWaitingGuests") or 0
-    serving = lng.get("numServing") or 0
     from .lounge import hint
+
+    metrics = [
+        (wait_txt, "est wait", ""),
+        (lng.get("numWaiting") or 0, "parties ahead", ""),
+        (lng.get("numWaitingGuests") or 0, "guests waiting", ""),
+    ]
+    # "Now serving" counts parties called off the list and checked in (the
+    # lounge labels this state "Arrived"). Walk-ins never enter the system, so
+    # outside an active waitlist it reads 0 for a room that may well be full --
+    # misleading, so hide it entirely then.
+    if lng.get("isWaitlistOpen") or lng.get("isWaitlistFull"):
+        metrics.append((
+            lng.get("numServing") or 0, "now serving",
+            "Parties called off the waitlist and checked in at the door (the "
+            "lounge's own label is \"Arrived\") -- not a headcount of the "
+            "lounge, since walk-ins never enter the waitlist system."))
+    def _metric(val, lab: str, tip: str) -> str:
+        title = f' title="{_esc(tip)}"' if tip else ""
+        return (f'<div class="metric"{title}><div class="m-val">{val}</div>'
+                f'<div class="m-lab">{lab}</div></div>')
+
+    met_html = "".join(_metric(*m) for m in metrics)
     return (
         '<div class="card lounge">'
         '<div class="card-title">Club SFO <span class="dim">&middot; T1 '
@@ -247,16 +266,7 @@ def _lounge_card(lng: dict, sec_wait_min: int | None = None) -> str:
         f'{_esc(state)}</span><span class="lounge-hint">{_esc(hint(state))}'
         '</span></div>'
         f'{_join_planner(lng, sec_wait_min)}'
-        '<div class="metrics">'
-        f'<div class="metric"><div class="m-val">{wait_txt}</div>'
-        '<div class="m-lab">est wait</div></div>'
-        f'<div class="metric"><div class="m-val">{ahead}</div>'
-        '<div class="m-lab">parties ahead</div></div>'
-        f'<div class="metric"><div class="m-val">{guests}</div>'
-        '<div class="m-lab">guests waiting</div></div>'
-        f'<div class="metric"><div class="m-val">{serving}</div>'
-        '<div class="m-lab">now serving</div></div>'
-        '</div></div>'
+        f'<div class="metrics">{met_html}</div></div>'
     )
 
 

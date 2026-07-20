@@ -354,12 +354,21 @@ function renderLounge(f){
   const met = document.createElement("div");
   met.className = "metrics";
   const items = [
-    [wm != null ? wm + " min" : "—", "est wait"],
-    [f.numWaiting ?? 0, "parties ahead"],
-    [f.numWaitingGuests ?? 0, "guests waiting"],
-    [f.numServing ?? 0, "now serving"]];
-  for(const [v,lab] of items){
+    [wm != null ? wm + " min" : "—", "est wait", ""],
+    [f.numWaiting ?? 0, "parties ahead", ""],
+    [f.numWaitingGuests ?? 0, "guests waiting", ""]];
+  // "Now serving" = parties called off the list and checked in (the lounge
+  // labels this "Arrived"). Walk-ins never enter the system, so with no active
+  // waitlist it reads 0 for a possibly-full room -- hide it rather than lie.
+  if(f.isWaitlistOpen || f.isWaitlistFull){
+    items.push([f.numServing ?? 0, "now serving",
+      "Parties called off the waitlist and checked in at the door (the "
+      + "lounge's own label is \"Arrived\") - not a headcount of the lounge, "
+      + "since walk-ins never enter the waitlist system."]);
+  }
+  for(const [v,lab,tip] of items){
     const m = document.createElement("div"); m.className = "metric";
+    if(tip) m.title = tip;
     const mv = document.createElement("div"); mv.className = "m-val mono";
     mv.textContent = v;
     const ml = document.createElement("div"); ml.className = "m-lab";
