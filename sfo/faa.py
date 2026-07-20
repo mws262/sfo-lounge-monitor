@@ -161,10 +161,13 @@ def direction_delays(reading: dict) -> dict[str, dict | None]:
         return out
     for e in reading.get("events", []):
         cat = e.get("category", "")
+        # Keep min / avg / max distinct: a Ground Delay Program publishes Avg
+        # and Max (no Min), and the average is the representative number --
+        # folding Max into it would advertise the worst case as typical.
         info = {
             "min": _to_minutes(e.get("ad_min") or e.get("min")),
-            "max": _to_minutes(e.get("ad_max") or e.get("max")
-                               or e.get("ad_avg") or e.get("avg")),
+            "avg": _to_minutes(e.get("ad_avg") or e.get("avg")),
+            "max": _to_minutes(e.get("ad_max") or e.get("max")),
             "trend": e.get("ad_trend") or e.get("trend"),
             "reason": _friendly_reason(e.get("reason")),
             "stop": "Ground Stop" in cat,
@@ -179,16 +182,18 @@ def direction_delays(reading: dict) -> dict[str, dict | None]:
 
 
 def direction_value(info: dict | None) -> str:
-    """The number shown on a direction row."""
+    """The number shown on a direction row -- typical delay, not worst case."""
     if not info:
         return "none"
     if info.get("closed"):
         return "CLOSED"
     if info.get("stop"):
         return "STOP"
-    lo, hi = info.get("min"), info.get("max")
+    lo, avg, hi = info.get("min"), info.get("avg"), info.get("max")
     if lo and hi and lo != hi:
-        return f"{lo}-{hi}m"
+        return f"{lo}-{hi}m"      # a genuine observed range
+    if avg:
+        return f"~{avg}m"         # average: what a typical flight gets
     if hi:
         return f"~{hi}m"
     return "active" if info.get("program") else "none"
@@ -200,8 +205,8 @@ def direction_score(info: dict | None) -> float:
         return 0.0
     if info.get("stop") or info.get("closed"):
         return 100.0
-    hi = info.get("max") or info.get("min")
-    base = common.linscale(hi, 0, 60) if hi else 0.0
+    mins = info.get("avg") or info.get("max") or info.get("min")
+    base = common.linscale(mins, 0, 60) if mins else 0.0
     return common.clamp(max(base, 55.0) if info.get("program") else base)
 
 
@@ -224,11 +229,27 @@ def direction_rows(reading: dict) -> list[dict]:
     ):
         info = dd.get(d)
         note = f"FAA-declared delay for flights {who} SFO."
-        if info and info.get("reason"):
-            note += f" Cause: {info['reason']}."
-        if info and info.get("trend"):
-            note += (" Rising/Falling is the FAA's own read on whether that "
-                     "delay is growing or winding down.")
+        if info:
+            if info.get("stop"):
+                note += (" GROUND STOP: flights bound for SFO are being held "
+                         "on the ground at their origin airports.")
+            elif info.get("program"):
+                note += (" Ground Delay Program: flights are held at their "
+                         "origin and given metered departure times.")
+            bits = []
+            if info.get("avg"):
+                bits.append(f"average {info['avg']}m")
+            if info.get("max"):
+                bits.append(f"worst {info['max']}m")
+            if info.get("min") and not info.get("avg"):
+                bits.append(f"from {info['min']}m")
+            if bits:
+                note += " Delay: " + ", ".join(bits) + "."
+            if info.get("reason"):
+                note += f" Cause: {info['reason']}."
+            if info.get("trend"):
+                note += (" Rising/Falling is the FAA's own read on whether "
+                         "that delay is growing or winding down.")
         if not reading.get("ok"):
             note = f"FAA feed unavailable ({reading.get('error')})."
         rows.append({
@@ -261,12 +282,14 @@ def summarize(reading: dict) -> str:
         else:  # a general delay advisory -- name the side it hits
             what = f"{direction} delays".strip() if direction else "delays"
         lo = _mins(e.get("ad_min") or e.get("min"))
-        hi = _mins(e.get("ad_max") or e.get("max") or e.get("ad_avg")
-                   or e.get("avg"))
+        avg = _mins(e.get("ad_avg") or e.get("avg"))
+        hi = _mins(e.get("ad_max") or e.get("max"))
         if lo and hi and lo != hi:
             rng = f" {lo}-{hi}"
-        elif hi:
-            rng = f" ~{hi}"
+        elif avg and hi:
+            rng = f" avg {avg}, worst {hi}"
+        elif avg or hi:
+            rng = f" ~{avg or hi}"
         else:
             rng = ""
         # The FAA's own <Trend> on the delay record: is the delay they're
