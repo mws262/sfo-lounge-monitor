@@ -123,12 +123,21 @@ The hosted setup lives in `docs/` + `.github/workflows/update.yml`:
 
 Setup, one time:
 
-1. Push this repo to GitHub (a **public** repo is recommended: Actions minutes
-   are free/unlimited for public repos, and ~72 short runs/day would eat most of
-   a private repo's 2,000-minute monthly quota).
-2. Settings → Pages → Source: *Deploy from a branch* → `main` / `docs/`.
-3. Actions tab → run **update-data** once manually (`workflow_dispatch`) to
-   seed `data.json`, or just wait for the first cron tick.
+1. Create a **public** repo on GitHub (public matters: Actions minutes are
+   free/unlimited there, whereas ~72 short runs/day would eat most of a private
+   repo's 2,000-minute monthly quota). Then:
+   ```bash
+   git remote add origin https://github.com/<you>/<repo>.git
+   git push -u origin main
+   ```
+2. **Settings → Pages** → Source: *Deploy from a branch* → `main` / `docs`.
+3. **Settings → Actions → General** → Workflow permissions → *Read and write*
+   (the cron commits the refreshed `data.json` back to the repo).
+4. **Actions** tab → *update-data* → **Run workflow** to seed it immediately,
+   rather than waiting for the first cron tick.
+
+No secrets or API keys are required — every wired source is keyless.
+The page lands at `https://<you>.github.io/<repo>/`.
 
 Caveats: scheduled workflows are best-effort (runs can lag a few minutes) and
 GitHub disables schedules after ~60 days without repo activity — the cron's own
