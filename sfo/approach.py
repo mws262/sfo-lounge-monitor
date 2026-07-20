@@ -1,5 +1,11 @@
 """Road congestion on the drives into SFO (TomTom Flow Segment API).
 
+DORMANT as of 2026-07: unwired from the composite and the dashboard. The
+probes and scoring below still work -- re-add "approach" to score.WEIGHTS and
+restore the fetch in cli.gather() to bring it back (the key was 401-ing when
+it was pulled).
+
+
 Origin-independent "is the approach jammed" signal, distinct from drive.py
 (which measures a personal door-to-SFO time and needs an origin). Three probes
 cover the chain every arriving car uses, chosen by live segment-snapping on

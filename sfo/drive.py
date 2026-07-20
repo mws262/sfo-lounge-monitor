@@ -1,5 +1,10 @@
 """Optional traffic-aware drive time to SFO via the Google Routes API.
 
+DORMANT as of 2026-07: unwired from the composite and the dashboard (it was
+never configured). Re-add "drive" to score.WEIGHTS and restore the fetch in
+cli.gather() to bring it back.
+
+
 Inert unless you supply a Routes API key and an origin in config:
 
     [google]

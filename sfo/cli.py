@@ -16,7 +16,7 @@ import json
 import sys
 import time
 
-from . import approach, common, departures, faa, lounge, drive, security, store
+from . import common, departures, faa, lounge, security, store
 from .config import Config
 from .score import band, composite
 
@@ -45,21 +45,16 @@ def gather(
     sec = _safe(security.fetch)
     fa = _safe(faa.fetch)
     dep = _safe(departures.fetch, cfg, cache_dir=cache_dir, cache_ttl=board_ttl)
-    app = _safe(approach.fetch, cfg)
-    drv = _safe(drive.fetch, cfg)
 
     subscores = {
         "security": security.score(sec, terminal),
         "delays": departures.delay_score(dep, terminal),
         "departures": departures.score(dep, terminal),
         "gdp": faa.score(fa),
-        "approach": approach.score(app),
-        "drive": drive.score(drv),
     }
     comp = composite(subscores)
     bundle.update({
         "security": sec, "faa": fa, "departures": dep,
-        "approach": app, "drive": drv,
         "subscores": subscores, "composite": comp, "terminal": terminal,
     })
     return bundle
@@ -78,12 +73,6 @@ def render(bundle: dict, terminal: str | None) -> str:
         dep = bundle["departures"]
         if dep.get("ok"):
             lines.append("  " + departures.summarize(dep, terminal))
-        app = bundle["approach"]
-        if app.get("ok"):
-            lines.append("  " + approach.summarize(app))
-        drv = bundle["drive"]
-        if drv.get("ok"):
-            lines.append("  " + drive.summarize(drv))
         if comp.get("missing"):
             lines.append("  (missing: " + ", ".join(comp["missing"]) + ")")
     lng = bundle["lounge"]
@@ -120,8 +109,7 @@ def _log(conn, bundle: dict) -> None:
     if "composite" in bundle:
         store.log_airport(
             conn, bundle["composite"], bundle["subscores"],
-            {k: bundle.get(k) for k in
-             ("security", "faa", "departures", "approach", "drive")},
+            {k: bundle.get(k) for k in ("security", "faa", "departures")},
             delay_median=departures.median_departed_delay(
                 bundle.get("departures") or {}, bundle.get("terminal")),
         )

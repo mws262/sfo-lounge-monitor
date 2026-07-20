@@ -16,14 +16,13 @@ from typing import Any
 # ratios matter. Fog was removed entirely (the FAA's spring-2026 ban on
 # side-by-side landings made the weather-capacity model obsolete); measured
 # delays -- the actual outcome, robust to cause -- replace it as a primary
-# signal. Departure volume stays as a minor, hidden contributor.
+# signal. Departure volume stays as a minor, hidden contributor. Approach
+# (TomTom) and drive (Google) are unwired for now -- see those modules.
 WEIGHTS = {
     "security": (0.35, "security"),
     "delays": (0.25, "delays"),
     "gdp": (0.15, "ground-delay"),
     "departures": (0.12, "departures"),
-    "approach": (0.10, "approach"),
-    "drive": (0.05, "drive"),
 }
 
 

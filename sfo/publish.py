@@ -19,7 +19,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-from . import approach, departures, drive, faa, security
+from . import departures, faa, security
 from .cli import gather
 from .config import Config
 from .score import band
@@ -44,12 +44,6 @@ def build_payload(bundle: dict, prev_history: list[dict],
          "summary": security.summarize(bundle.get("security") or {}, terminal)},
         # Inbound / outbound FAA delays: value + the FAA's own trend arrow.
         *faa.direction_rows(bundle.get("faa") or {}),
-        {"key": "approach", "label": "Approach",
-         "score": subs.get("approach"), "value": vals["approach"],
-         "summary": approach.summarize(bundle.get("approach") or {})},
-        {"key": "drive", "label": "Drive",
-         "score": subs.get("drive"), "value": vals["drive"],
-         "summary": drive.summarize(bundle.get("drive") or {})},
     ]
 
     dep = bundle.get("departures") or {}

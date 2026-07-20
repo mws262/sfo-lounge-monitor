@@ -44,35 +44,14 @@ def _sev_color(score: float | None) -> str:
 
 
 def signal_stats(bundle: dict, terminal: str | None = None) -> dict[str, str]:
-    """Plain display numbers for the stat rows (no composite involved)."""
-    from . import security, faa as _faa
-    sec = bundle.get("security") or {}
-    fa = bundle.get("faa") or {}
-    ap = bundle.get("approach") or {}
-    dr = bundle.get("drive") or {}
+    """Plain display numbers for the stat rows (no composite involved).
 
-    m = security.best_general_min(sec, terminal)
-    sec_val = f"{m}m" if m is not None else "n/a"
-
-    if not fa.get("ok"):
-        faa_val = "n/a"
-    elif fa.get("ground_stop"):
-        faa_val = "STOP"
-    elif fa.get("closure"):
-        faa_val = "CLOSED"
-    else:
-        mm = _faa._max_delay_minutes(fa.get("events") or [])
-        faa_val = f"{mm}m" if mm else "none"
-
-    if ap.get("ok"):
-        r = ap.get("worst_ratio")
-        app_val = "clear" if (r or 1.0) < 1.15 else f"+{round((r - 1) * 100)}%"
-    else:
-        app_val = "n/a"
-
-    drv_val = f"{dr.get('minutes')}m" if dr.get("ok") else "n/a"
-    return {"security": sec_val, "gdp": faa_val,
-            "approach": app_val, "drive": drv_val}
+    FAA delays are rendered per-direction via faa.direction_rows(); this
+    covers the remaining simple stats.
+    """
+    from . import security
+    m = security.best_general_min(bundle.get("security") or {}, terminal)
+    return {"security": f"{m}m" if m is not None else "n/a"}
 
 
 def _esc(s: Any) -> str:
@@ -411,7 +390,7 @@ def render_html(
     # Stat rows: plain numbers, colored by internal severity score. The
     # composite is still computed/logged but deliberately not displayed;
     # measured delays live on the Flight delays card, not here.
-    from . import security, faa, approach, drive
+    from . import security, faa
     vals = signal_stats(bundle, terminal)
     parts = [_stat_row("Security", subs.get("security"), vals["security"],
                        security.summarize(bundle.get("security") or {}, terminal))]
@@ -419,10 +398,6 @@ def render_html(
     for r in faa.direction_rows(bundle.get("faa") or {}):
         parts.append(_stat_row(r["label"], r["score"], r["value"],
                                note=r["note"], trend=r["trend"]))
-    parts.append(_stat_row("Approach", subs.get("approach"), vals["approach"],
-                           approach.summarize(bundle.get("approach") or {})))
-    parts.append(_stat_row("Drive", subs.get("drive"), vals["drive"],
-                           drive.summarize(bundle.get("drive") or {})))
     bars = "".join(parts)
 
     # Flight-delay gradient bars: each bucket's flights sorted by delay,
