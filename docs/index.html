@@ -156,10 +156,14 @@ body{background:var(--bg);color:var(--ink);
   .wstatus,.wgate,.wflight .dim{display:none;}}
 .warr{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:12px;color:var(--muted);white-space:nowrap;}
+/* The cell may hold two times (struck sched + new); let it wrap between
+   them so a slipped flight can't overflow into the slip column. Each time
+   itself stays unbroken via the nowrap spans. */
 .wtime{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
-  font-size:13px;font-weight:600;white-space:nowrap;}
+  font-size:13px;font-weight:600;line-height:1.35;}
 .wtime .was{color:var(--muted);text-decoration:line-through;font-weight:400;
   margin-right:5px;}
+.wtime .was,.wtime .best{display:inline-block;white-space:nowrap;}
 .wlate{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:12px;font-weight:700;}
 .wflight{font-size:13px;}
@@ -653,7 +657,9 @@ function renderWatch(w, ids, arrLabel, subText){
       const was = document.createElement("span"); was.className = "was";
       was.textContent = ptTime(f.sched); t.append(was);
     }
-    t.append(ptTime(slipped ? f.best : f.sched));
+    const best = document.createElement("span"); best.className = "best";
+    best.textContent = ptTime(slipped ? f.best : f.sched);
+    t.append(best);
     row.append(t);
 
     const late = document.createElement("div"); late.className = "wlate";
