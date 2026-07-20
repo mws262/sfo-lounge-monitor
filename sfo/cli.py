@@ -16,7 +16,7 @@ import json
 import sys
 import time
 
-from . import common, departures, faa, lounge, security, store
+from . import common, departures, faa, lounge, seatac, security, store
 from .config import Config
 from .score import band, composite
 
@@ -43,8 +43,15 @@ def gather(
         return bundle
 
     sec = _safe(security.fetch)
-    fa = _safe(faa.fetch)
+    # One national pull covers both airports (the SEA tab rides along free).
+    try:
+        fa_all = faa.fetch_multi(("SFO", "SEA"))
+    except Exception as e:  # noqa: BLE001 - defensive: keep the run alive
+        fa_all = {a: {"ok": False, "error": f"{type(e).__name__}: {e}",
+                      "events": []} for a in ("SFO", "SEA")}
+    fa = fa_all["SFO"]
     dep = _safe(departures.fetch, cfg, cache_dir=cache_dir, cache_ttl=board_ttl)
+    sea_sec = _safe(seatac.fetch_checkpoints)
 
     subscores = {
         "security": security.score(sec, terminal),
@@ -55,6 +62,7 @@ def gather(
     comp = composite(subscores)
     bundle.update({
         "security": sec, "faa": fa, "departures": dep,
+        "sea_faa": fa_all["SEA"], "sea_security": sea_sec,
         "subscores": subscores, "composite": comp, "terminal": terminal,
     })
     return bundle

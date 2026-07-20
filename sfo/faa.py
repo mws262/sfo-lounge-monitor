@@ -19,17 +19,31 @@ def _text(el: ET.Element | None) -> str | None:
     return el.text.strip() if el is not None and el.text else None
 
 
-def fetch() -> dict[str, Any]:
+def fetch(airport: str = AIRPORT) -> dict[str, Any]:
+    return fetch_multi((airport,))[airport]
+
+
+def fetch_multi(airports: tuple[str, ...] = (AIRPORT,)) -> dict[str, dict]:
+    """One national XML pull, filtered into a per-airport reading each.
+
+    The document covers the whole NAS, so watching a second airport (SEA)
+    costs zero extra bandwidth.
+    """
     status, body = common.http_get(URL)
+    root = None
+    err = None
     if status != 200:
-        return {"ok": False, "error": f"HTTP {status}", "events": []}
-    try:
-        root = ET.fromstring(body)
-    except ET.ParseError as e:
-        return {"ok": False, "error": f"XML parse: {e}", "events": []}
+        err = f"HTTP {status}"
+    else:
+        try:
+            root = ET.fromstring(body)
+        except ET.ParseError as e:
+            err = f"XML parse: {e}"
+    if err:
+        return {a: {"ok": False, "error": err, "events": []} for a in airports}
 
     updated = _text(root.find("Update_Time"))
-    events: list[dict] = []
+    by_arpt: dict[str, list[dict]] = {a: [] for a in airports}
 
     # ASWS uses a different wrapper element per delay category:
     #   Airport Closures      -> <Airport>
@@ -41,9 +55,10 @@ def fetch() -> dict[str, Any]:
         category = _text(dtype.find("Name")) or "Unknown"
         for el in dtype.iter():
             arpt_el = el.find("ARPT")
-            if arpt_el is None or _text(arpt_el) != AIRPORT:
+            code = _text(arpt_el) if arpt_el is not None else None
+            if code not in by_arpt:
                 continue
-            ev = {"category": category, "arpt": AIRPORT}
+            ev = {"category": category, "arpt": code}
             for tag in ("Reason", "Avg", "Max", "Min", "Start", "Reopen",
                         "Trend", "Comment"):
                 v = _text(el.find(tag))
@@ -59,19 +74,23 @@ def fetch() -> dict[str, Any]:
                     v = _text(ad.find(tag))
                     if v:
                         ev[f"ad_{tag.lower()}"] = v
-            events.append(ev)
+            by_arpt[code].append(ev)
 
-    return {
-        "ok": True,
-        "updated": updated,
-        "events": events,
-        "ground_stop": any("Ground Stop" in e["category"] for e in events),
-        "ground_delay": any(
-            "Ground Delay" in e["category"] or "Delay Program" in e["category"]
-            for e in events
-        ),
-        "closure": any("Closure" in e["category"] for e in events),
-    }
+    out: dict[str, dict] = {}
+    for a in airports:
+        events = by_arpt[a]
+        out[a] = {
+            "ok": True,
+            "updated": updated,
+            "events": events,
+            "ground_stop": any("Ground Stop" in e["category"] for e in events),
+            "ground_delay": any(
+                "Ground Delay" in e["category"]
+                or "Delay Program" in e["category"] for e in events
+            ),
+            "closure": any("Closure" in e["category"] for e in events),
+        }
+    return out
 
 
 def score(reading: dict) -> float | None:
@@ -219,8 +238,8 @@ def direction_trend(info: dict | None) -> dict | None:
     return {"word": word, "dir": arrow}
 
 
-def direction_rows(reading: dict) -> list[dict]:
-    """Ready-to-render inbound/outbound rows for the Airport status card."""
+def direction_rows(reading: dict, airport: str = AIRPORT) -> list[dict]:
+    """Ready-to-render inbound/outbound rows for an Airport status card."""
     dd = direction_delays(reading)
     rows = []
     for key, label, d, who in (
@@ -228,11 +247,11 @@ def direction_rows(reading: dict) -> list[dict]:
         ("faa_out", "FAA Outbound Delay", "Departure", "out of"),
     ):
         info = dd.get(d)
-        note = f"FAA-declared delay for flights {who} SFO."
+        note = f"FAA-declared delay for flights {who} {airport}."
         if info:
             if info.get("stop"):
-                note += (" GROUND STOP: flights bound for SFO are being held "
-                         "on the ground at their origin airports.")
+                note += (f" GROUND STOP: flights bound for {airport} are "
+                         "being held on the ground at their origin airports.")
             elif info.get("program"):
                 note += (" Ground Delay Program: flights are held at their "
                          "origin and given metered departure times.")

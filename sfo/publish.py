@@ -70,6 +70,12 @@ def build_payload(bundle: dict, prev_history: list[dict],
         "delays": delays,  # scoped delay stats (n/pct/median/max/cancelled)
         # Per-flight list for watched destinations (SEA/PAE), airport-wide.
         "watch": dep.get("watch"),
+        # SEA tab: live checkpoints, FAA rows for SEA, and SEA->SFO returns.
+        "sea": {
+            "security": bundle.get("sea_security"),
+            "signals": faa.direction_rows(bundle.get("sea_faa") or {}, "SEA"),
+            "watch": dep.get("watch_return"),
+        },
         # Shortest General security line (scoped), for the lounge join-planner.
         "security_wait_min": security.best_general_min(
             bundle.get("security") or {}, terminal),

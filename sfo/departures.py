@@ -84,17 +84,27 @@ def _sched(r: dict) -> str | None:
     return r.get("scheduled_in_off_block_time") or r.get("scheduled_aod_time")
 
 
-def _physical_departures(rows: list[dict]) -> list[dict]:
-    """PAX departures, deduped to one row per physical aircraft movement."""
+def _physical(rows: list[dict], kind: str) -> list[dict]:
+    """PAX rows of one kind, deduped to one per physical aircraft movement.
+
+    Codeshares repeat a movement under every marketing code; time + other
+    airport + gate identifies the aircraft. The surviving row carries the
+    operating carrier's code (it lists codeshares under `code_shares`).
+    """
     seen: dict[tuple, dict] = {}
     for r in rows:
-        if r.get("flight_kind") != "Departure":
+        if r.get("flight_kind") != kind:
             continue
         if r.get("flight_nature") != "PAX":
             continue
         key = (_sched(r), _dest(r), (r.get("gate") or {}).get("gate_number"))
         seen.setdefault(key, r)
     return list(seen.values())
+
+
+def _physical_departures(rows: list[dict]) -> list[dict]:
+    """PAX departures, deduped to one row per physical aircraft movement."""
+    return _physical(rows, "Departure")
 
 
 def _parse(t: str | None) -> datetime | None:
@@ -240,11 +250,82 @@ def _enrich_sea_arrivals(flights: list[dict]) -> None:
         except Exception:  # noqa: BLE001 - arrivals are optional decoration
             return  # site unreachable; skip the rest too
         if hit:
-            f["arr_sched"] = hit["arr"].isoformat()
+            f["arr_sched"] = hit["when"].isoformat()
             f["arr_est"] = hit["est"].isoformat() if hit["est"] else None
             f["arr_status"] = hit["status"]
             f["arr_gate"] = hit["gate"]
             f["arr_claim"] = hit["claim"]
+
+
+def _return_flights(rows: list[dict], ref: datetime) -> dict:
+    """SEA -> SFO returns for the SEA tab: departure-centric rows.
+
+    The flysfo board's ARRIVAL rows are the spine (physical flights under
+    operating codes, with SFO in-block times, gate and baggage carousel);
+    the Port of Seattle's departures page supplies the SEA-side departure
+    schedule, live "Now" revision, status and gate. PAE returns are
+    omitted -- Paine Field is a separate airport with no feed. Without the
+    Port site there is no departure time to show, so this reports ok=False
+    rather than a half-empty list.
+    """
+    from . import seatac
+
+    flights: list[dict] = []
+    for r in _physical(rows, "Arrival"):
+        if _dest(r) != "SEA":   # on arrival rows, `airport` is the origin
+            continue
+        sched_arr = _parse(_sched(r))
+        if not sched_arr:
+            continue
+        cancelled = any(h in (r.get("remark") or "").lower()
+                        for h in _CANCEL_HINTS)
+        act = _parse(r.get("actual_in_off_block_time"))
+        est_arr = act or _parse(r.get("estimated_in_off_block_time"))
+        best_arr = est_arr or sched_arr
+        if ((sched_arr if cancelled else best_arr)
+                < ref - timedelta(minutes=WATCH_PAST_MIN)):
+            continue
+        code = (f"{(r.get('airline') or {}).get('iata_code') or '?'}"
+                f"{r.get('flight_number') or ''}")
+        try:
+            dep = seatac.match(seatac.dep_rows_for_arrival(sched_arr),
+                               code, sched_arr, before=True)
+        except Exception:  # noqa: BLE001 - Port site down: no dep times at all
+            return {"origin": "SEA", "ok": False, "flights": []}
+        if not dep:
+            continue  # oddity the Port page doesn't list
+        status = (dep.get("status") or "").replace("On-Time", "On Time")
+        if dep["est"] and dep["est"] > dep["when"]:
+            status = "Delayed"  # raw status is the "Now H:MM" string itself
+        arr_remark = r.get("remark") or ""
+        term = _terminal(r)
+        flights.append({
+            "flight": code,
+            "airline": (r.get("airline") or {}).get("airline_display_name"),
+            "dest": "SEA",
+            "sched": dep["when"].isoformat(),
+            "best": (dep["est"] or dep["when"]).isoformat(),
+            "late_min": None if cancelled else round(
+                ((dep["est"] or dep["when"]) - dep["when"])
+                .total_seconds() / 60),
+            "status": "Cancelled" if cancelled else status,
+            "departed": status == "Departed"
+            or arr_remark in ("Arrived", "Landed"),
+            "gate": dep.get("gate"),
+            "terminal": None,   # SEA is one connected terminal
+            "arr_sched": sched_arr.isoformat(),
+            "arr_est": est_arr.isoformat() if est_arr else None,
+            "arr_status": arr_remark or None,
+            "arr_gate": " ".join(
+                x for x in (term if term != "?" else None,
+                            (r.get("gate") or {}).get("gate_number")) if x
+            ) or None,
+            "arr_claim": ((r.get("baggage_carousel") or {})
+                          .get("carousel_name") or "").removeprefix("CL-")
+            or None,
+        })
+    flights.sort(key=lambda f: f["sched"])
+    return {"origin": "SEA", "ok": True, "flights": flights}
 
 
 def fetch(
@@ -301,6 +382,7 @@ def fetch(
                                for t in TERMINALS},
         "watch": {"destinations": list(WATCH_DESTINATIONS),
                   "flights": _watch_flights(deps, ref)},
+        "watch_return": _return_flights(rows, ref),
     }
 
 

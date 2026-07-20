@@ -124,6 +124,26 @@ body{background:var(--bg);color:var(--ink);
 .spark{width:100%;height:44px;display:block;}
 .spark-empty{font-size:12px;color:var(--muted);padding:12px 0;}
 
+.tabbar{display:flex;gap:8px;margin-bottom:20px;}
+.tabbtn{font-family:ui-monospace,monospace;letter-spacing:.1em;font-size:13px;
+  font-weight:600;text-transform:uppercase;padding:7px 22px;border-radius:999px;
+  border:1px solid var(--hair);background:var(--surface);color:var(--muted);
+  cursor:pointer;}
+.tabbtn.active{color:#fff;background:var(--accent);border-color:var(--accent);}
+
+.cprow{display:grid;grid-template-columns:44px 58px 74px 1fr;gap:10px;
+  align-items:baseline;padding:8px 0;border-top:1px solid var(--hair);}
+.cprow:first-child{border-top:none;padding-top:2px;}
+.cprow.shut{opacity:.45;}
+.cpname{font-family:ui-monospace,monospace;font-size:13px;font-weight:600;}
+.cpwait{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:18px;font-weight:700;}
+.cpq{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:11px;color:var(--muted);white-space:nowrap;}
+.cplanes{font-size:12px;color:var(--muted);}
+.cplanes b{color:var(--accent);font-weight:600;}
+.cpstale{font-size:11px;color:#d64545;}
+
 .watch{margin-top:18px;}
 .wrow{display:grid;grid-template-columns:118px 52px 1fr 84px 74px 92px;gap:10px;
   align-items:baseline;padding:8px 0;border-top:1px solid var(--hair);}
@@ -158,6 +178,12 @@ body{background:var(--bg);color:var(--ink);
       <br>lounge <span class="mono" id="fresh-lounge">&mdash;</span></div>
   </div>
 
+  <div class="tabbar" role="tablist">
+    <button class="tabbtn active" data-tab="sfo" role="tab">SFO</button>
+    <button class="tabbtn" data-tab="sea" role="tab">SEA</button>
+  </div>
+
+  <div id="pane-sfo">
   <div class="card delayscard" id="delaycard" hidden
     title="Each bar: flights sorted by delay, left (least) to right (most). Green is reserved for on-time flights; any delay ramps yellow to red on a 0..max scale shared between the bars. The tick marks the median delay among late (>=15m) flights, at its true position. Left gate = actual pushback vs schedule for the last 2 hours (wheels-up adds ~20m of normal taxi and has no schedule to compare to); next 3h = airline estimates, which skew optimistic.">
     <div class="card-title">Flight delays <span class="dim" id="delay-scope"></span></div>
@@ -199,6 +225,33 @@ body{background:var(--bg);color:var(--ink);
     <div class="legend">departs &middot; slip &middot; flight &middot; lands (SEA)
       &middot; SFO gate &middot; status</div>
   </div>
+  </div><!-- /pane-sfo -->
+
+  <div id="pane-sea" hidden>
+    <div class="grid">
+      <div class="card"
+        title="Sea-Tac's own live checkpoint feed (~1 min refresh on their side). All checkpoints reach the same secure side, so just join the best open line for your lane type. Queue = people counted in line. Rows the feed itself flags as stale are marked; closed checkpoints sink to the bottom.">
+        <div class="card-title">Security lines <span class="dim">&middot; live at SEA</span></div>
+        <div id="sea-cps"><div class="unavail">waiting for data&hellip;</div></div>
+        <div class="legend"><b>PreCheck</b> highlighted &middot;
+          <a href="https://www.portseattle.org/SEAspotsaver" target="_blank"
+             rel="noopener" style="color:var(--accent);text-decoration:none;">SEA Spot Saver &#8599;</a>
+          = free timed-entry reservation</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Airport status</div>
+        <div id="sea-signals"><div class="unavail">waiting for data&hellip;</div></div>
+      </div>
+    </div>
+
+    <div class="card watch" id="sea-watchcard" hidden
+      title="SEA-side departure times from the Port of Seattle widget (struck-through = schedule when the estimate slipped), matched to SFO's own board for the arrival: gate-in time, terminal &amp; gate, baggage carousel. Hover a row for arrival details.">
+      <div class="card-title">To SFO <span class="dim" id="sea-watch-sub"></span></div>
+      <div id="sea-watchlist"></div>
+      <div class="legend">departs SEA &middot; slip &middot; flight &middot; lands (SFO)
+        &middot; SEA gate &middot; status</div>
+    </div>
+  </div><!-- /pane-sea -->
 
   <div class="foot">
     <span>Sources: flysfo &middot; FAA ASWS &middot; Waitwhile &middot; TomTom</span>
@@ -522,41 +575,20 @@ function renderAirport(d){
   fa.textContent = mins <= 1 ? "just now" : mins + "m ago";
   fa.className = "mono" + (mins > STALE_AIR_MIN ? " stale" : "");
 
-  // Plain stat rows: the real number, colored by severity. No bars/weights.
-  // Rising delays get a red up arrow, falling ones a green down arrow.
-  const TREND_COLOR = {up: "#d64545", down: "#2fa76a"};
-  const TREND_ARROW = {up: "↑", down: "↓"};
-  const sig = $("signals");
-  sig.textContent = "";
-  for(const s of (d.signals || [])){
-    const value = s.value || "n/a";
-    const row = document.createElement("div");
-    row.className = "sig" + (value === "n/a" ? " na" : "");
-    const head = document.createElement("div"); head.className = "sig-head";
-    const lab = document.createElement("span"); lab.className = "sig-label";
-    lab.textContent = s.label;
-    head.append(lab);
-    if(s.trend){
-      const tr = document.createElement("span"); tr.className = "sig-trend";
-      tr.style.color = TREND_COLOR[s.trend.dir] || MUTED;
-      tr.textContent = (TREND_ARROW[s.trend.dir] || "") + " " + s.trend.word;
-      head.append(tr);
-    }
-    const val = document.createElement("span"); val.className = "sig-val";
-    val.style.color = sevColor(s.score);
-    val.textContent = value;
-    val.title = s.note || "Colored by severity: green = good, red = bad.";
-    head.append(val);
-    row.append(head);
-    if(s.summary){
-      const sum = document.createElement("div"); sum.className = "sig-sum";
-      sum.textContent = s.summary;
-      row.append(sum);
-    }
-    sig.append(row);
-  }
+  renderSignals(d.signals || [], $("signals"));
 
-  renderWatch(d.watch);
+  // SEA tab: checkpoint lines, FAA rows, and the SEA->SFO return board.
+  const sea = d.sea || {};
+  renderSignals(sea.signals || [], $("sea-signals"));
+  renderSeaCps(sea.security);
+  renderWatch(sea.watch,
+    {card: "sea-watchcard", sub: "sea-watch-sub", list: "sea-watchlist"},
+    "SFO", "from SEA · departure times");
+
+  renderWatch(d.watch,
+    {card: "watchcard", sub: "watch-sub", list: "watchlist"}, "SEA",
+    (d.watch && d.watch.destinations)
+      ? d.watch.destinations.join(" + ") + " · gate times" : "");
 
   const hist = d.history || [];
   const delays = hist.map(h => h.delay_median);
@@ -579,25 +611,32 @@ function renderAirport(d){
 // Status word -> color; anything unmapped renders muted.
 const WSTATUS_COLOR = {"cancelled":"#d64545", "delayed":"#d99a2b",
   "last call":"#e2792e", "boarding":"#2fa76a", "departing":"#2fa76a",
-  "on time":"#2fa76a", "departed":MUTED, "landed":MUTED};
-function renderWatch(w){
-  const card = $("watchcard");
-  if(!w || !w.destinations){ card.hidden = true; return; }  // pre-watch data.json
+  "on time":"#2fa76a", "departed":MUTED, "landed":MUTED, "arrived":MUTED};
+function renderWatch(w, ids, arrLabel, subText){
+  const card = $(ids.card);
+  if(!w){ card.hidden = true; return; }  // pre-watch data.json
   card.hidden = false;
-  $("watch-sub").textContent = "· " + w.destinations.join(" + ") + " · gate times";
-  const list = $("watchlist"); list.textContent = "";
+  $(ids.sub).textContent = subText ? "· " + subText : "";
+  const list = $(ids.list); list.textContent = "";
   const fl = w.flights || [];
+  if(w.ok === false){
+    const e = document.createElement("div"); e.className = "spark-empty";
+    e.textContent = "departure feed unavailable right now";
+    list.append(e); return;
+  }
   if(!fl.length){
     const e = document.createElement("div"); e.className = "spark-empty";
     e.textContent = "no more departures on today's board";
     list.append(e); return;
   }
+  // The headline place; only rows going somewhere ELSE get a dest suffix.
+  const primary = (w.destinations && w.destinations[0]) || w.origin || "";
   for(const f of fl){
     const row = document.createElement("div");
     row.className = "wrow" + (f.departed ? " done" : "");
     const tips = [];
     if(f.wheels_up) tips.push("wheels up " + ptTime(f.wheels_up) + " PT");
-    if(f.arr_sched) tips.push("SEA: sched " + ptTime(f.arr_sched)
+    if(f.arr_sched) tips.push(arrLabel + ": sched " + ptTime(f.arr_sched)
       + (f.arr_est ? " · now " + ptTime(f.arr_est) : "")
       + (f.arr_gate ? " · gate " + f.arr_gate : "")
       + (f.arr_claim ? " · claim " + f.arr_claim : ""));
@@ -630,7 +669,7 @@ function renderWatch(w){
     fli.append(b);
     if(f.airline){ const a = document.createElement("span"); a.className = "dim";
       a.textContent = " " + f.airline
-        + (f.dest !== "SEA" ? " · " + f.dest : ""); fli.append(a); }
+        + (f.dest !== primary ? " · " + f.dest : ""); fli.append(a); }
     row.append(fli);
 
     // Arrival at SEA: scheduled slot, or SEA's live "Now" revision -- the
@@ -655,13 +694,14 @@ function renderWatch(w){
     row.append(arr);
 
     const g = document.createElement("div"); g.className = "wgate";
-    g.textContent = (f.terminal || "?") + " · " + (f.gate || "—");
+    g.textContent = (f.terminal ? f.terminal + " · " : "") + (f.gate || "—");
     row.append(g);
 
-    // Once SEA reports the flight down, "Landed" beats the stale "Departed".
+    // Once the far end reports the flight down, that beats stale "Departed".
     const st = document.createElement("div"); st.className = "wstatus";
-    const stTxt = (f.departed && f.arr_status === "Landed")
-      ? "Landed" : (f.status || "");
+    const stTxt = (f.departed
+        && (f.arr_status === "Landed" || f.arr_status === "Arrived"))
+      ? f.arr_status : (f.status || "");
     st.textContent = stTxt;
     st.style.color = WSTATUS_COLOR[stTxt.toLowerCase()] || MUTED;
     row.append(st);
@@ -690,6 +730,114 @@ function delayTrendColor(m){
     .getPropertyValue("--accent").trim() || "#f5a524";
   return "hsl(" + Math.round(120 * (1 - Math.min(1, m / 60))) + ",65%,45%)";
 }
+
+/* ---------------------------------------------------------- signal rows */
+// Plain stat rows: the real number, colored by severity. No bars/weights.
+// Rising delays get a red up arrow, falling ones a green down arrow.
+const TREND_COLOR = {up: "#d64545", down: "#2fa76a"};
+const TREND_ARROW = {up: "↑", down: "↓"};
+function renderSignals(signals, el){
+  el.textContent = "";
+  for(const s of signals){
+    const value = s.value || "n/a";
+    const row = document.createElement("div");
+    row.className = "sig" + (value === "n/a" ? " na" : "");
+    const head = document.createElement("div"); head.className = "sig-head";
+    const lab = document.createElement("span"); lab.className = "sig-label";
+    lab.textContent = s.label;
+    head.append(lab);
+    if(s.trend){
+      const tr = document.createElement("span"); tr.className = "sig-trend";
+      tr.style.color = TREND_COLOR[s.trend.dir] || MUTED;
+      tr.textContent = (TREND_ARROW[s.trend.dir] || "") + " " + s.trend.word;
+      head.append(tr);
+    }
+    const val = document.createElement("span"); val.className = "sig-val";
+    val.style.color = sevColor(s.score);
+    val.textContent = value;
+    val.title = s.note || "Colored by severity: green = good, red = bad.";
+    head.append(val);
+    row.append(head);
+    if(s.summary){
+      const sum = document.createElement("div"); sum.className = "sig-sum";
+      sum.textContent = s.summary;
+      row.append(sum);
+    }
+    el.append(row);
+  }
+}
+
+/* ------------------------------------------------- SEA security lines */
+const LANE_NAMES = {"Pre": "PreCheck", "Spot Saver": "Spot Saver",
+  "Premium": "Premium", "Clear": "CLEAR", "General": "General",
+  "Visitor Pass": "Visitor"};
+function renderSeaCps(sec){
+  const el = $("sea-cps");
+  el.textContent = "";
+  if(!sec || sec.ok === false){
+    const e = document.createElement("div"); e.className = "unavail";
+    e.textContent = "checkpoint feed unavailable"
+      + (sec && sec.error ? " (" + sec.error + ")" : "");
+    el.append(e); return;
+  }
+  for(const c of (sec.checkpoints || [])){
+    const row = document.createElement("div");
+    row.className = "cprow" + (!c.open || !c.fresh ? " shut" : "");
+    const name = document.createElement("div"); name.className = "cpname";
+    name.textContent = "CP " + c.name;
+    row.append(name);
+
+    const wait = document.createElement("div"); wait.className = "cpwait";
+    if(!c.open){
+      wait.textContent = "—"; wait.style.color = MUTED;
+      wait.style.fontSize = "13px";
+    }else if(!c.fresh){
+      wait.textContent = "?"; wait.style.color = MUTED;
+    }else{
+      wait.textContent = "~" + c.wait_min + "m";
+      // 0 min green -> 30+ min red, same continuous ramp as the stat rows.
+      wait.style.color = sevColor(Math.min(100, c.wait_min / 30 * 100));
+    }
+    row.append(wait);
+
+    const q = document.createElement("div"); q.className = "cpq";
+    q.textContent = (c.open && c.fresh && c.queue != null)
+      ? c.queue + " in line" : "";
+    row.append(q);
+
+    const lanes = document.createElement("div"); lanes.className = "cplanes";
+    if(!c.open){
+      lanes.textContent = "closed";
+    }else if(!c.fresh){
+      const s = document.createElement("span"); s.className = "cpstale";
+      s.textContent = "stale data (" + (c.age_min != null
+        ? Math.round(c.age_min) + "m old" : "unknown age") + ")";
+      lanes.append(s);
+    }else{
+      (c.lanes || []).forEach((l, i) => {
+        if(i) lanes.append(" · ");
+        if(l === "Pre"){ const b = document.createElement("b");
+          b.textContent = "PreCheck"; lanes.append(b); }
+        else lanes.append(LANE_NAMES[l] || l);
+      });
+      if(!(c.lanes || []).length) lanes.append("no lanes listed");
+    }
+    row.append(lanes);
+    el.append(row);
+  }
+}
+
+/* ------------------------------------------------------------------ tabs */
+function setTab(t){
+  $("pane-sfo").hidden = t !== "sfo";
+  $("pane-sea").hidden = t !== "sea";
+  for(const b of document.querySelectorAll(".tabbtn"))
+    b.classList.toggle("active", b.dataset.tab === t);
+  try{ localStorage.setItem("tab", t); }catch(e){}
+}
+for(const b of document.querySelectorAll(".tabbtn"))
+  b.addEventListener("click", () => setTab(b.dataset.tab));
+try{ if(localStorage.getItem("tab") === "sea") setTab("sea"); }catch(e){}
 
 /* ------------------------------------------------------------------ boot */
 loadData(); pollLounge();

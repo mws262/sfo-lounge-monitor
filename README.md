@@ -48,7 +48,8 @@ third-party packages for normal operation.
 | **Fog / ceiling** | aviationweather.gov METAR (KSFO) | ✅ confirmed | `sfo/metar.py`. Ceiling + flight category — SFO's leading delay indicator. |
 | **FAA ground programs** | nasstatus.faa.gov ASWS XML | ✅ confirmed | `sfo/faa.py`. National feed filtered to SFO. Ground-stop/GDP parsing is validated structurally; confirm field mapping during an *active* SFO event. |
 | **Scheduled departures** | flysfo flight board JSON | ✅ confirmed | `sfo/departures.py`. Keyless `/flysfo/api/flight-status`. Forward, per-terminal, with live status. Replaces OpenSky (which needed OAuth and only gave *past* movements). |
-| **SEA arrivals** | Port of Seattle flight widget | ✅ confirmed | `sfo/seatac.py`. Keyless SSR `/pos/flights`. Scheduled + live-revised arrival, gate, baggage claim for the watched SFO→SEA flights. PAE has no feed. |
+| **SEA flights** | Port of Seattle flight widget | ✅ confirmed | `sfo/seatac.py`. Keyless SSR `/pos/flights`, arrivals *and* departures. Scheduled + live-revised times, gate, baggage claim. Feeds the To Seattle card and the SEA tab's To SFO returns. PAE has no feed. |
+| **SEA security** | Port of Seattle checkpoint API | ✅ confirmed | `sfo/seatac.py`. Keyless JSON `/api/cwt/wait-times`: per-checkpoint wait, queue length, lane types (PreCheck etc.), with the API's own staleness flags honored. Drives the SEA tab's line picker. |
 | **Drive time** | Google Routes API | ⚙️ optional | `sfo/drive.py`. Needs a key + origin — inert until configured. |
 
 Missing signals are dropped and the composite weights renormalize over whatever
