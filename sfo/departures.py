@@ -216,7 +216,35 @@ def _watch_flights(deps: list[dict], ref: datetime) -> list[dict]:
             "terminal": _terminal(r),
         })
     out.sort(key=lambda f: f["sched"])
+    _enrich_sea_arrivals(out)
     return out
+
+
+def _enrich_sea_arrivals(flights: list[dict]) -> None:
+    """Attach Sea-Tac's scheduled arrival info to SEA rows, in place.
+
+    Best-effort garnish: any failure (site down, markup changed) leaves the
+    rows without arr_* fields and never breaks the board. PAE has no feed.
+    """
+    from . import seatac
+
+    for f in flights:
+        if f["dest"] != "SEA":
+            continue
+        sched = _parse(f["sched"])
+        if not sched:
+            continue
+        try:
+            hit = seatac.match(seatac.rows_for_departure(sched),
+                               f["flight"], sched)
+        except Exception:  # noqa: BLE001 - arrivals are optional decoration
+            return  # site unreachable; skip the rest too
+        if hit:
+            f["arr_sched"] = hit["arr"].isoformat()
+            f["arr_est"] = hit["est"].isoformat() if hit["est"] else None
+            f["arr_status"] = hit["status"]
+            f["arr_gate"] = hit["gate"]
+            f["arr_claim"] = hit["claim"]
 
 
 def fetch(

@@ -125,12 +125,14 @@ body{background:var(--bg);color:var(--ink);
 .spark-empty{font-size:12px;color:var(--muted);padding:12px 0;}
 
 .watch{margin-top:18px;}
-.wrow{display:grid;grid-template-columns:118px 52px 1fr 74px 92px;gap:10px;
+.wrow{display:grid;grid-template-columns:118px 52px 1fr 84px 74px 92px;gap:10px;
   align-items:baseline;padding:8px 0;border-top:1px solid var(--hair);}
 .wrow:first-child{border-top:none;padding-top:2px;}
 .wrow.done{opacity:.5;}
-@media(max-width:720px){.wrow{grid-template-columns:96px 44px 1fr 60px;}
-  .wstatus{display:none;}}
+@media(max-width:720px){.wrow{grid-template-columns:92px 44px 1fr 74px;}
+  .wstatus,.wgate,.wflight .dim{display:none;}}
+.warr{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:12px;color:var(--muted);white-space:nowrap;}
 .wtime{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:13px;font-weight:600;white-space:nowrap;}
 .wtime .was{color:var(--muted);text-decoration:line-through;font-weight:400;
@@ -191,9 +193,11 @@ body{background:var(--bg);color:var(--ink);
   </div>
 
   <div class="card watch" id="watchcard" hidden
-    title="Gate (pushback) times, all terminals. Struck-through time = original schedule when the estimate has slipped. Lateness is pushback vs schedule; hover a departed row for its actual wheels-up time.">
+    title="Gate (pushback) times, all terminals. Struck-through time = original schedule when the estimate has slipped. Lateness is pushback vs schedule. The second time is Sea-Tac's arrival: scheduled, or SEA's own live revision when colored. Hover a row for wheels-up, arrival gate and baggage claim.">
     <div class="card-title">To Seattle <span class="dim" id="watch-sub"></span></div>
     <div id="watchlist"></div>
+    <div class="legend">departs &middot; slip &middot; flight &middot; lands (SEA)
+      &middot; SFO gate &middot; status</div>
   </div>
 
   <div class="foot">
@@ -575,7 +579,7 @@ function renderAirport(d){
 // Status word -> color; anything unmapped renders muted.
 const WSTATUS_COLOR = {"cancelled":"#d64545", "delayed":"#d99a2b",
   "last call":"#e2792e", "boarding":"#2fa76a", "departing":"#2fa76a",
-  "on time":"#2fa76a", "departed":MUTED};
+  "on time":"#2fa76a", "departed":MUTED, "landed":MUTED};
 function renderWatch(w){
   const card = $("watchcard");
   if(!w || !w.destinations){ card.hidden = true; return; }  // pre-watch data.json
@@ -591,7 +595,13 @@ function renderWatch(w){
   for(const f of fl){
     const row = document.createElement("div");
     row.className = "wrow" + (f.departed ? " done" : "");
-    if(f.wheels_up) row.title = "wheels up " + ptTime(f.wheels_up) + " PT";
+    const tips = [];
+    if(f.wheels_up) tips.push("wheels up " + ptTime(f.wheels_up) + " PT");
+    if(f.arr_sched) tips.push("SEA: sched " + ptTime(f.arr_sched)
+      + (f.arr_est ? " · now " + ptTime(f.arr_est) : "")
+      + (f.arr_gate ? " · gate " + f.arr_gate : "")
+      + (f.arr_claim ? " · claim " + f.arr_claim : ""));
+    if(tips.length) row.title = tips.join("  |  ");
 
     // 14:20 -> struck-through sched + bold best once the estimate slips.
     const t = document.createElement("div"); t.className = "wtime";
@@ -623,13 +633,37 @@ function renderWatch(w){
         + (f.dest !== "SEA" ? " · " + f.dest : ""); fli.append(a); }
     row.append(fli);
 
+    // Arrival at SEA: scheduled slot, or SEA's live "Now" revision -- the
+    // latter is colored by how far it slipped (green = early/on time).
+    const arr = document.createElement("div"); arr.className = "warr";
+    const arrOp = f.arr_est || f.arr_sched;
+    if(arrOp){
+      arr.textContent = ptTime(arrOp);
+      if(f.arr_est && f.arr_sched){
+        const slip = Math.round(
+          (Date.parse(f.arr_est) - Date.parse(f.arr_sched)) / 60000);
+        if(Math.abs(slip) >= 5){
+          arr.style.fontWeight = "700";
+          arr.style.color = slip <= 0 ? "hsl(120,60%,40%)"
+            : "hsl(" + Math.round(60 * (1 - Math.min(1, slip / 60)))
+              + ",78%,42%)";
+        }
+      }
+    }else{
+      arr.textContent = "—";
+    }
+    row.append(arr);
+
     const g = document.createElement("div"); g.className = "wgate";
     g.textContent = (f.terminal || "?") + " · " + (f.gate || "—");
     row.append(g);
 
+    // Once SEA reports the flight down, "Landed" beats the stale "Departed".
     const st = document.createElement("div"); st.className = "wstatus";
-    st.textContent = f.status || "";
-    st.style.color = WSTATUS_COLOR[(f.status || "").toLowerCase()] || MUTED;
+    const stTxt = (f.departed && f.arr_status === "Landed")
+      ? "Landed" : (f.status || "");
+    st.textContent = stTxt;
+    st.style.color = WSTATUS_COLOR[stTxt.toLowerCase()] || MUTED;
     row.append(st);
 
     list.append(row);
