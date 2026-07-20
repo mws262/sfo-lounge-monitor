@@ -140,8 +140,11 @@ body{background:var(--bg);color:var(--ink);
   font-size:18px;font-weight:700;}
 .cpq{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:11px;color:var(--muted);white-space:nowrap;}
-.cplanes{font-size:12px;color:var(--muted);}
-.cplanes b{color:var(--accent);font-weight:600;}
+.cplanes{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;
+  gap:4px;align-items:center;}
+.lanechip{display:inline-block;font-family:ui-monospace,monospace;
+  font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;
+  border-radius:5px;border:1px solid currentColor;line-height:1.5;}
 .cpstale{font-size:11px;color:#d64545;}
 
 .watch{margin-top:18px;}
@@ -233,7 +236,8 @@ body{background:var(--bg);color:var(--ink);
         title="Sea-Tac's own live checkpoint feed (~1 min refresh on their side). All checkpoints reach the same secure side, so just join the best open line for your lane type. Queue = people counted in line. Rows the feed itself flags as stale are marked; closed checkpoints sink to the bottom.">
         <div class="card-title">Security lines <span class="dim">&middot; live at SEA</span></div>
         <div id="sea-cps"><div class="unavail">waiting for data&hellip;</div></div>
-        <div class="legend"><b>PreCheck</b> highlighted &middot;
+        <div class="legend">chips = lanes open at that checkpoint (hover for
+          what each is) &middot;
           <a href="https://www.portseattle.org/SEAspotsaver" target="_blank"
              rel="noopener" style="color:var(--accent);text-decoration:none;">SEA Spot Saver &#8599;</a>
           = free timed-entry reservation</div>
@@ -768,9 +772,15 @@ function renderSignals(signals, el){
 }
 
 /* ------------------------------------------------- SEA security lines */
-const LANE_NAMES = {"Pre": "PreCheck", "Spot Saver": "Spot Saver",
-  "Premium": "Premium", "Clear": "CLEAR", "General": "General",
-  "Visitor Pass": "Visitor"};
+// Lane chips: label, color (border + text; theme-safe), full name for hover.
+const LANES = {
+  "General":      ["GEN",   "#8b93a1", "General screening lane"],
+  "Pre":          ["PRE ✓", "#2e86d1", "TSA PreCheck lane"],
+  "Spot Saver":   ["SPOT",  "#2fa76a", "SEA Spot Saver (free timed-entry reservation)"],
+  "Premium":      ["PREM",  "#d99a2b", "Premium / priority lane (airline status, first class)"],
+  "Clear":        ["CLEAR", "#7d5fd3", "CLEAR identity lane"],
+  "Visitor Pass": ["VIS",   "#3aa8a0", "SEA Visitor Pass (non-ticketed entry)"],
+};
 function renderSeaCps(sec){
   const el = $("sea-cps");
   el.textContent = "";
@@ -814,12 +824,15 @@ function renderSeaCps(sec){
         ? Math.round(c.age_min) + "m old" : "unknown age") + ")";
       lanes.append(s);
     }else{
-      (c.lanes || []).forEach((l, i) => {
-        if(i) lanes.append(" · ");
-        if(l === "Pre"){ const b = document.createElement("b");
-          b.textContent = "PreCheck"; lanes.append(b); }
-        else lanes.append(LANE_NAMES[l] || l);
-      });
+      for(const l of (c.lanes || [])){
+        const [label, color, full] = LANES[l] || [l, MUTED, l];
+        const chip = document.createElement("span");
+        chip.className = "lanechip";
+        chip.style.color = color;
+        chip.textContent = label;
+        chip.title = full;
+        lanes.append(chip);
+      }
       if(!(c.lanes || []).length) lanes.append("no lanes listed");
     }
     row.append(lanes);

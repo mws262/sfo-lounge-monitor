@@ -189,6 +189,11 @@ def fetch_checkpoints() -> dict[str, Any]:
             "queue": c.get("QueueLength"),
             "lanes": lanes,
             "pre": "Pre" in lanes,
+            # Raw `PreCheck` field, semantics UNRESOLVED (2026-07-19): either
+            # a has-PreCheck boolean or a separate Pre-lane wait time. The
+            # Port's own widget ignores it. Passed through for observation;
+            # do not display until a busy-morning reading disambiguates.
+            "pre_raw": c.get("PreCheck"),
             # The API serves hours-stale numbers and says so -- honor it.
             "fresh": bool(c.get("IsDataAvailable"))
                      and (age is None or age <= STALE_MIN),
