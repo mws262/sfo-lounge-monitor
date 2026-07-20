@@ -102,18 +102,30 @@ def in_operating_hours(now=None) -> bool:
     return OPEN_MIN <= m < CLOSE_MIN
 
 
+def has_queue(f: dict) -> bool:
+    """True when the waitlist has real activity worth reporting.
+
+    `isWaitlistOpen` means "accepting NEW joins" -- it goes false while staff
+    work down a backlog, so it alone is not a test for "is there a queue".
+    """
+    return bool(f.get("isWaitlistOpen") or f.get("isWaitlistFull")
+                or (f.get("numWaiting") or 0) > 0)
+
+
 def derive_state(f: dict, now=None) -> str:
     """Lounge state from the waitlist flags + posted operating hours.
 
-    Within hours, a force-closed waitlist means "no list needed -- walk in",
-    not "lounge closed". Outside posted hours it means what it looks like.
+    Within hours, a force-closed waitlist usually means "no list needed --
+    walk in". But the list also closes to new joins while an existing queue
+    drains, so a nonzero numWaiting outranks the flag: there are parties ahead
+    of you AND you can't get in line, which is the opposite of walk-in.
     """
     if not in_operating_hours(now):
         return "CLOSED"
     if f.get("isWaitlistFull"):
         return "FULL"
-    if f.get("isWaitlistOpen") and (f.get("numWaiting") or 0) > 0:
-        return "WAITLIST"
+    if (f.get("numWaiting") or 0) > 0:
+        return "WAITLIST" if f.get("isWaitlistOpen") else "WAITLIST/closed"
     if f.get("isWaitlistOpen"):
         return "OPEN/list-on"
     return "OPEN/walk-in"
@@ -125,6 +137,8 @@ def waitlist_mode(f: dict) -> str:
         return "full"
     if f.get("isWaitlistOpen"):
         return "open"
+    if (f.get("numWaiting") or 0) > 0:
+        return "draining"  # queue being worked, closed to new joins
     return "idle"
 
 
@@ -145,6 +159,7 @@ def hint(state: str) -> str:
         "CLOSED": "closed for the night (04:30-23:30 PT)",
         "FULL": "don't bother - at capacity",
         "WAITLIST": "join the list now",
+        "WAITLIST/closed": "queue ahead - not taking new joins",
         "OPEN/list-on": "walk up (list running, no queue)",
         "OPEN/walk-in": "walk in - no list running",
     }.get(state, state)

@@ -195,11 +195,15 @@ const WAITLIST_URL = "https://waitwhile.com/locations/o0Sz5GVh6nIrQet8Ifbi?qr=tr
 const GRACE_MIN = 10, WALK_MIN = 2;
 
 const MUTED = "#8b93a1";
-const LOUNGE_COLORS = {CLOSED:MUTED, FULL:"#d64545", WAITLIST:"#d99a2b",
+const LOUNGE_COLORS = {CLOSED:MUTED, FULL:"#d64545",
+  // Queue ahead AND closed to joins -- worse than a joinable list.
+  "WAITLIST/closed":"#e2792e", WAITLIST:"#d99a2b",
   "OPEN/list-on":"#2fa76a", "OPEN/walk-in":"#2fa76a"};
 const HINTS = {CLOSED:"closed for the night (04:30–23:30 PT)",
   FULL:"don't bother - at capacity",
-  WAITLIST:"join the list now", "OPEN/list-on":"walk up (list running, no queue)",
+  WAITLIST:"join the list now",
+  "WAITLIST/closed":"queue ahead - not taking new joins",
+  "OPEN/list-on":"walk up (list running, no queue)",
   "OPEN/walk-in":"walk in - no list running"};
 // Posted hours (theclubairportlounges.com "DAILY 04:30 - 23:30"), minutes-of-day PT.
 const LOUNGE_OPEN_MIN = 4*60 + 30, LOUNGE_CLOSE_MIN = 23*60 + 30;
@@ -234,14 +238,22 @@ function ptMinutesNow(){
   const [h, m] = parts.split(":").map(Number);
   return h*60 + m;
 }
+// isWaitlistOpen means "accepting NEW joins" -- it goes false while staff work
+// down a backlog, so it alone can't tell you whether a queue exists.
+function hasQueue(f){
+  return !!(f.isWaitlistOpen || f.isWaitlistFull || (f.numWaiting||0) > 0);
+}
 function deriveState(f){
   // The Waitwhile flags describe the WAITLIST, not the door: staff keep the
   // list force-closed whenever the room has space, so "walk right in" and
   // "closed overnight" have identical flags. Posted hours break the tie.
+  // A nonzero queue outranks the flag -- parties ahead of you AND no way to
+  // get in line is the opposite of walk-in.
   const t = ptMinutesNow();
   if(t < LOUNGE_OPEN_MIN || t >= LOUNGE_CLOSE_MIN) return "CLOSED";
   if(f.isWaitlistFull) return "FULL";
-  if(f.isWaitlistOpen && (f.numWaiting||0)>0) return "WAITLIST";
+  if((f.numWaiting||0) > 0)
+    return f.isWaitlistOpen ? "WAITLIST" : "WAITLIST/closed";
   if(f.isWaitlistOpen) return "OPEN/list-on";
   return "OPEN/walk-in";
 }
@@ -358,9 +370,9 @@ function renderLounge(f){
     [f.numWaiting ?? 0, "parties ahead", ""],
     [f.numWaitingGuests ?? 0, "guests waiting", ""]];
   // "Now serving" = parties called off the list and checked in (the lounge
-  // labels this "Arrived"). Walk-ins never enter the system, so with no active
-  // waitlist it reads 0 for a possibly-full room -- hide it rather than lie.
-  if(f.isWaitlistOpen || f.isWaitlistFull){
+  // labels this "Arrived"). Walk-ins never enter the system, so with no queue
+  // activity it reads 0 for a possibly-full room -- hide it rather than lie.
+  if(hasQueue(f)){
     items.push([f.numServing ?? 0, "now serving",
       "Parties called off the waitlist and checked in at the door (the "
       + "lounge's own label is \"Arrived\") - not a headcount of the lounge, "

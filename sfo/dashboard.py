@@ -19,6 +19,8 @@ _MUTED = "#8b93a1"
 _LOUNGE_COLORS = {
     "CLOSED": _MUTED,
     "FULL": "#d64545",
+    # Queue ahead AND closed to joins -- worse than a joinable list.
+    "WAITLIST/closed": "#e2792e",
     "WAITLIST": "#d99a2b",
     "OPEN/list-on": "#2fa76a",
     "OPEN/walk-in": "#2fa76a",
@@ -244,9 +246,11 @@ def _lounge_card(lng: dict, sec_wait_min: int | None = None) -> str:
     ]
     # "Now serving" counts parties called off the list and checked in (the
     # lounge labels this state "Arrived"). Walk-ins never enter the system, so
-    # outside an active waitlist it reads 0 for a room that may well be full --
-    # misleading, so hide it entirely then.
-    if lng.get("isWaitlistOpen") or lng.get("isWaitlistFull"):
+    # with no queue activity at all it reads 0 for a room that may well be full
+    # -- misleading, so hide it then. has_queue() also covers a backlog
+    # draining after the list closed to new joins.
+    from .lounge import has_queue
+    if has_queue(lng):
         metrics.append((
             lng.get("numServing") or 0, "now serving",
             "Parties called off the waitlist and checked in at the door (the "
