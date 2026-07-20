@@ -531,16 +531,26 @@ function renderAirport(d){
   const queues = hist.map(h => h.lounge_waiting);
   const nowMed = (d.delays && d.delays.departed)
     ? arrMedian(d.delays.departed.delays_sorted) : null;
+  // No fixed cadence claim: GitHub's cron is best-effort, so sample spacing
+  // varies. Show the span the samples actually cover instead.
   $("trend-air-label").textContent = "Median departure delay · "
-    + delays.filter(v=>v!=null).length + " samples @20min";
-  $("trend-q-label").textContent =
-    "Lounge queue · " + queues.filter(v=>v!=null).length + " samples @20min";
+    + delays.filter(v=>v!=null).length + " samples" + histSpan(hist, "delay_median");
+  $("trend-q-label").textContent = "Lounge queue · "
+    + queues.filter(v=>v!=null).length + " samples" + histSpan(hist, "lounge_waiting");
   $("trend-air-now").textContent = nowMed != null ? nowMed + "m" : "—";
   sparkline($("spark-air"), delays, delayTrendColor(nowMed));
   sparkline($("spark-q"), queues, getComputedStyle(document.documentElement)
     .getPropertyValue("--accent").trim() || "#f5a524");
 }
 
+// " · last 4h" -- the wall-clock span the non-null samples actually cover.
+function histSpan(hist, key){
+  const ts = (hist || []).filter(h => h[key] != null && h.ts).map(h => Date.parse(h.ts));
+  if(ts.length < 2) return "";
+  const hrs = (Math.max(...ts) - Math.min(...ts)) / 3600000;
+  if(hrs < 1) return " · last " + Math.round(hrs * 60) + "m";
+  return " · last " + (hrs < 10 ? hrs.toFixed(1) : Math.round(hrs)) + "h";
+}
 // Median of a sorted ascending array (the delays_sorted we ship).
 function arrMedian(a){
   if(!a || !a.length) return null;

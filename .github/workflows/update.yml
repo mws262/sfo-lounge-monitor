@@ -1,8 +1,12 @@
 name: update-data
 
 on:
+  # GitHub's floor is 5 min, and schedules are BEST-EFFORT: runs are delayed
+  # or dropped under load (worst around the top of the hour), so the delivered
+  # cadence is always slower than what's asked for. 10 min is a request, not a
+  # guarantee -- the page flags airport data older than 45 min as stale.
   schedule:
-    - cron: "*/20 * * * *"   # best-effort; GitHub may delay a few minutes
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}       # manual runs from the Actions tab
 
 permissions:

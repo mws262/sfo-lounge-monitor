@@ -108,7 +108,7 @@ The hosted setup lives in `docs/` + `.github/workflows/update.yml`:
   Firestore doc every 60s (the endpoint sends open CORS headers and the key is
   Waitwhile's own public web key), so the **lounge readout is live** with no
   backend. Background tabs pause polling after the first fetch.
-- **`docs/data.json`** — regenerated every ~20 min by a GitHub Actions cron
+- **`docs/data.json`** — regenerated every ~10 min by a GitHub Actions cron
   running `python -m sfo.publish --dir docs --terminal T1` (stdlib only, no pip
   step). Carries the composite, per-signal summaries, and a rolling 7-day
   history for the sparklines. History lives inside the JSON — no database in
