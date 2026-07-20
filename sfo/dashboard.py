@@ -412,7 +412,7 @@ def render_html(
     delays_html = ""
     if dep_b.get("n") or up_b.get("n"):
         rows = (
-            _delay_bar_row("took off last 2h", dep_b, gmax, "")
+            _delay_bar_row("left gate last 2h", dep_b, gmax, "")
             + _delay_bar_row("next 3h (est)", up_b, gmax,
                              f'{up_b["cancelled"]} cancelled'
                              if up_b.get("cancelled") else "")
@@ -424,9 +424,10 @@ def render_html(
             f'delay, left (least) to right (most). Green is reserved for '
             f'on-time flights; any delay ramps yellow to red on a 0..max '
             f'scale shared between the bars. The tick marks the median delay '
-            f'among late (>=15m) flights, at its true position. Took off = '
-            f'actual vs schedule for the last 2 hours; next 3h = airline '
-            f'estimates, which skew optimistic.">'
+            f'among late (>=15m) flights, at its true position. Left gate = '
+            f'actual pushback vs schedule for the last 2 hours (wheels-up '
+            f'adds ~20m of normal taxi and has no schedule to compare to); '
+            f'next 3h = airline estimates, which skew optimistic.">'
             f'<div class="card-title">Flight delays <span class="dim">'
             f'{scope_txt}</span></div>{rows}'
             f'<div class="legend">flights sorted by delay &middot; <b>green</b> '

@@ -124,6 +124,26 @@ body{background:var(--bg);color:var(--ink);
 .spark{width:100%;height:44px;display:block;}
 .spark-empty{font-size:12px;color:var(--muted);padding:12px 0;}
 
+.watch{margin-top:18px;}
+.wrow{display:grid;grid-template-columns:118px 52px 1fr 74px 92px;gap:10px;
+  align-items:baseline;padding:8px 0;border-top:1px solid var(--hair);}
+.wrow:first-child{border-top:none;padding-top:2px;}
+.wrow.done{opacity:.5;}
+@media(max-width:720px){.wrow{grid-template-columns:96px 44px 1fr 60px;}
+  .wstatus{display:none;}}
+.wtime{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:13px;font-weight:600;white-space:nowrap;}
+.wtime .was{color:var(--muted);text-decoration:line-through;font-weight:400;
+  margin-right:5px;}
+.wlate{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:12px;font-weight:700;}
+.wflight{font-size:13px;}
+.wflight b{font-family:ui-monospace,monospace;font-weight:700;}
+.wflight .dim{color:var(--muted);font-size:12px;}
+.wgate{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:12px;color:var(--muted);white-space:nowrap;}
+.wstatus{font-size:12px;font-weight:600;text-align:right;white-space:nowrap;}
+
 .foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--hair);
   font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 16px;}
 </style>
@@ -137,7 +157,7 @@ body{background:var(--bg);color:var(--ink);
   </div>
 
   <div class="card delayscard" id="delaycard" hidden
-    title="Each bar: flights sorted by delay, left (least) to right (most). Green is reserved for on-time flights; any delay ramps yellow to red on a 0..max scale shared between the bars. The tick marks the median delay among late (>=15m) flights, at its true position. Took off = actual vs schedule for the last 2 hours; next 3h = airline estimates, which skew optimistic.">
+    title="Each bar: flights sorted by delay, left (least) to right (most). Green is reserved for on-time flights; any delay ramps yellow to red on a 0..max scale shared between the bars. The tick marks the median delay among late (>=15m) flights, at its true position. Left gate = actual pushback vs schedule for the last 2 hours (wheels-up adds ~20m of normal taxi and has no schedule to compare to); next 3h = airline estimates, which skew optimistic.">
     <div class="card-title">Flight delays <span class="dim" id="delay-scope"></span></div>
     <div id="delaybars"></div>
     <div class="legend">flights sorted by delay &middot; <b>green</b> = on time &middot;
@@ -168,6 +188,12 @@ body{background:var(--bg);color:var(--ink);
         <span class="trend-now mono" id="trend-q-now">&mdash;</span></div>
       <div id="spark-q"><div class="spark-empty">not enough history yet</div></div>
     </div>
+  </div>
+
+  <div class="card watch" id="watchcard" hidden
+    title="Gate (pushback) times, all terminals. Struck-through time = original schedule when the estimate has slipped. Lateness is pushback vs schedule; hover a departed row for its actual wheels-up time.">
+    <div class="card-title">To Seattle <span class="dim" id="watch-sub"></span></div>
+    <div id="watchlist"></div>
   </div>
 
   <div class="foot">
@@ -418,7 +444,7 @@ function renderAirport(d){
   const dl = d.delays || {};
   const DELAY_THRESH = 15;
   const buckets = [
-    ["took off last 2h", dl.departed, ""],
+    ["left gate last 2h", dl.departed, ""],
     ["next 3h (est)", dl.upcoming,
      (dl.upcoming && dl.upcoming.cancelled) ? dl.upcoming.cancelled + " cancelled" : ""],
   ];
@@ -526,6 +552,8 @@ function renderAirport(d){
     sig.append(row);
   }
 
+  renderWatch(d.watch);
+
   const hist = d.history || [];
   const delays = hist.map(h => h.delay_median);
   const queues = hist.map(h => h.lounge_waiting);
@@ -541,6 +569,71 @@ function renderAirport(d){
   sparkline($("spark-air"), delays, delayTrendColor(nowMed));
   sparkline($("spark-q"), queues, getComputedStyle(document.documentElement)
     .getPropertyValue("--accent").trim() || "#f5a524");
+}
+
+/* --------------------------------------------------- watched destinations */
+// Status word -> color; anything unmapped renders muted.
+const WSTATUS_COLOR = {"cancelled":"#d64545", "delayed":"#d99a2b",
+  "last call":"#e2792e", "boarding":"#2fa76a", "departing":"#2fa76a",
+  "on time":"#2fa76a", "departed":MUTED};
+function renderWatch(w){
+  const card = $("watchcard");
+  if(!w || !w.destinations){ card.hidden = true; return; }  // pre-watch data.json
+  card.hidden = false;
+  $("watch-sub").textContent = "· " + w.destinations.join(" + ") + " · gate times";
+  const list = $("watchlist"); list.textContent = "";
+  const fl = w.flights || [];
+  if(!fl.length){
+    const e = document.createElement("div"); e.className = "spark-empty";
+    e.textContent = "no more departures on today's board";
+    list.append(e); return;
+  }
+  for(const f of fl){
+    const row = document.createElement("div");
+    row.className = "wrow" + (f.departed ? " done" : "");
+    if(f.wheels_up) row.title = "wheels up " + ptTime(f.wheels_up) + " PT";
+
+    // 14:20 -> struck-through sched + bold best once the estimate slips.
+    const t = document.createElement("div"); t.className = "wtime";
+    const slipped = f.late_min != null && f.late_min !== 0;
+    if(slipped){
+      const was = document.createElement("span"); was.className = "was";
+      was.textContent = ptTime(f.sched); t.append(was);
+    }
+    t.append(ptTime(slipped ? f.best : f.sched));
+    row.append(t);
+
+    const late = document.createElement("div"); late.className = "wlate";
+    if(f.late_min == null){ late.textContent = "—"; late.style.color = MUTED; }
+    else{
+      late.textContent = (f.late_min > 0 ? "+" : "") + f.late_min + "m";
+      // Same rule as the delay bars: green is RESERVED for on-time (or
+      // early); any slip ramps yellow -> red over 60m.
+      late.style.color = f.late_min <= 0 ? "hsl(120,60%,40%)"
+        : "hsl(" + Math.round(60 * (1 - Math.min(1, f.late_min / 60)))
+          + ",78%,42%)";
+    }
+    row.append(late);
+
+    const fli = document.createElement("div"); fli.className = "wflight";
+    const b = document.createElement("b"); b.textContent = f.flight;
+    fli.append(b);
+    if(f.airline){ const a = document.createElement("span"); a.className = "dim";
+      a.textContent = " " + f.airline
+        + (f.dest !== "SEA" ? " · " + f.dest : ""); fli.append(a); }
+    row.append(fli);
+
+    const g = document.createElement("div"); g.className = "wgate";
+    g.textContent = (f.terminal || "?") + " · " + (f.gate || "—");
+    row.append(g);
+
+    const st = document.createElement("div"); st.className = "wstatus";
+    st.textContent = f.status || "";
+    st.style.color = WSTATUS_COLOR[(f.status || "").toLowerCase()] || MUTED;
+    row.append(st);
+
+    list.append(row);
+  }
 }
 
 // " · last 4h" -- the wall-clock span the non-null samples actually cover.

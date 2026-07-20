@@ -79,7 +79,9 @@ def _terminal(r: dict) -> str:
 
 
 def _sched(r: dict) -> str | None:
-    return r.get("scheduled_aod_time") or r.get("scheduled_in_off_block_time")
+    # Both fields are the same GATE time on every row -- airlines publish no
+    # takeoff schedule -- so this is the baseline for gate-vs-gate delays.
+    return r.get("scheduled_in_off_block_time") or r.get("scheduled_aod_time")
 
 
 def _physical_departures(rows: list[dict]) -> list[dict]:
@@ -105,12 +107,18 @@ def _parse(t: str | None) -> datetime | None:
 
 
 # Delay stats come in two buckets with different evidentiary weight:
-#   departed -- flights that ACTUALLY took off in the last 2h (selected by
-#               actual departure time; delay = actual - scheduled). Ground
-#               truth for "how late are flights really leaving".
+#   departed -- flights that ACTUALLY left the gate in the last 2h (selected
+#               by actual off-block time; delay = actual - scheduled, gate vs
+#               gate). Ground truth for "how late are flights really leaving".
 #   upcoming -- flights scheduled in the next 3h (delay = current estimate -
 #               scheduled). Airline estimates skew optimistic, so treat this
 #               bucket as a floor.
+#
+# GATE (in_off_block) times, NOT aod (wheels-up): the published schedule is a
+# gate schedule -- scheduled_aod == scheduled_in_off_block on every row --
+# so aod-vs-schedule silently books SFO's ~24m median taxi as "delay" on
+# every single flight (it once claimed 90% of departures late where
+# gate-vs-gate says ~30%). DOT on-time stats are gate-departure too.
 DEPARTED_LOOKBACK_MIN = 120
 UPCOMING_LOOKAHEAD_MIN = 180
 DELAY_THRESHOLD_MIN = 15  # DOT's standard "delayed" cutoff
@@ -150,11 +158,11 @@ def _delay_stats(deps: list[dict], ref: datetime,
             if dep_lo <= sched <= up_hi:
                 cancelled += 1
             continue
-        act = _parse(r.get("actual_aod_time"))
+        act = _parse(r.get("actual_in_off_block_time"))
         if act and dep_lo <= act <= ref:
             departed.append(max(0.0, (act - sched).total_seconds() / 60))
         elif ref <= sched <= up_hi:
-            est = _parse(r.get("estimated_aod_time")) or act
+            est = _parse(r.get("estimated_in_off_block_time")) or act
             if est:
                 upcoming.append(max(0.0, (est - sched).total_seconds() / 60))
 
@@ -162,6 +170,53 @@ def _delay_stats(deps: list[dict], ref: datetime,
         "departed": _bucket_stats(departed),
         "upcoming": {**_bucket_stats(upcoming), "cancelled": cancelled},
     }
+
+
+# Destinations worth an explicit per-flight list on the dashboard (routes the
+# user actually flies). Airport-wide, not terminal-scoped -- you take the
+# flight from whichever terminal it leaves.
+WATCH_DESTINATIONS = ("SEA", "PAE")
+WATCH_PAST_MIN = 30  # keep just-departed rows briefly for context
+
+
+def _watch_flights(deps: list[dict], ref: datetime) -> list[dict]:
+    """Per-flight rows to WATCH_DESTINATIONS: upcoming + just-departed.
+
+    Times are GATE times (see the bucket note above): sched/best are
+    off-block, wheels_up is the actual takeoff once airborne. late_min is
+    signed (negative = pushed back early) and None for cancellations.
+    """
+    out = []
+    for r in deps:
+        if _dest(r) not in WATCH_DESTINATIONS:
+            continue
+        sched = _parse(_sched(r))
+        if not sched:
+            continue
+        cancelled = any(h in (r.get("remark") or "").lower()
+                        for h in _CANCEL_HINTS)
+        act = _parse(r.get("actual_in_off_block_time"))
+        best = act or _parse(r.get("estimated_in_off_block_time")) or sched
+        # Window on the flight's best-known gate time (schedule for cancels).
+        if (sched if cancelled else best) < ref - timedelta(minutes=WATCH_PAST_MIN):
+            continue
+        out.append({
+            "flight": f"{(r.get('airline') or {}).get('iata_code') or '?'}"
+                      f"{r.get('flight_number') or ''}",
+            "airline": (r.get("airline") or {}).get("airline_display_name"),
+            "dest": _dest(r),
+            "sched": sched.isoformat(),
+            "best": best.isoformat(),
+            "late_min": None if cancelled
+            else round((best - sched).total_seconds() / 60),
+            "status": r.get("remark") or "",
+            "departed": bool(act),
+            "wheels_up": r.get("actual_aod_time"),
+            "gate": (r.get("gate") or {}).get("gate_number"),
+            "terminal": _terminal(r),
+        })
+    out.sort(key=lambda f: f["sched"])
+    return out
 
 
 def fetch(
@@ -216,6 +271,8 @@ def fetch(
         "delays": _delay_stats(deps, ref, None),
         "delays_by_terminal": {t: _delay_stats(deps, ref, t)
                                for t in TERMINALS},
+        "watch": {"destinations": list(WATCH_DESTINATIONS),
+                  "flights": _watch_flights(deps, ref)},
     }
 
 
@@ -268,7 +325,7 @@ def delay_summary(st: dict) -> str:
     dep = st.get("departed") or {}
     up = st.get("upcoming") or {}
     cxl = f", {up['cancelled']} cancelled" if up.get("cancelled") else ""
-    return (f"took off last 2h: {_bucket_summary(dep)} | "
+    return (f"left gate last 2h: {_bucket_summary(dep)} | "
             f"next 3h est: {_bucket_summary(up)}{cxl}")
 
 
@@ -279,7 +336,8 @@ MIN_DELAY_SAMPLE = 3   # need a few flights before the stats mean anything
 
 DELAY_SIGNAL_NOTE = (
     "Measured straight off the flight board: the share of recent (last 2h) "
-    "departures that ACTUALLY left >=15 min late, plus their median delay. "
+    "departures that ACTUALLY left the gate >=15 min late (pushback vs "
+    "schedule, DOT-style), plus their median delay. "
     "It's the real outcome -- robust to the cause (weather, staffing, the "
     "side-by-side landing ban) in a way a weather model isn't. Falls back to "
     "the next-3h estimates overnight when nothing has departed recently. See "

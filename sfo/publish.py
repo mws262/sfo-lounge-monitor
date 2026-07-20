@@ -68,6 +68,8 @@ def build_payload(bundle: dict, prev_history: list[dict],
         "missing": comp.get("missing") or [],
         "signals": signals,
         "delays": delays,  # scoped delay stats (n/pct/median/max/cancelled)
+        # Per-flight list for watched destinations (SEA/PAE), airport-wide.
+        "watch": dep.get("watch"),
         # Shortest General security line (scoped), for the lounge join-planner.
         "security_wait_min": security.best_general_min(
             bundle.get("security") or {}, terminal),
