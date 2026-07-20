@@ -334,7 +334,8 @@ body{background:var(--bg);color:var(--ink);
 .card{background:var(--surface);border:1px solid var(--hair);border-radius:16px;
   padding:18px 20px;box-shadow:var(--shadow);}
 .card-title{font-family:ui-monospace,monospace;text-transform:uppercase;
-  letter-spacing:.12em;font-size:12px;color:var(--muted);margin-bottom:14px;}
+  letter-spacing:.1em;font-size:15px;font-weight:600;color:var(--ink);
+  margin-bottom:14px;}
 .card-title .dim,.dim{color:var(--muted);letter-spacing:0;text-transform:none;}
 
 .legend{font-size:11px;color:var(--muted);margin:-8px 0 14px;}
@@ -376,8 +377,9 @@ body{background:var(--bg);color:var(--ink);
 .trends{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 @media(max-width:720px){.trends{grid-template-columns:1fr}}
 .trend-title{display:flex;justify-content:space-between;align-items:baseline;
-  font-family:ui-monospace,monospace;text-transform:uppercase;
-  letter-spacing:.12em;font-size:12px;color:var(--muted);margin-bottom:10px;}
+  gap:10px;font-family:ui-monospace,monospace;text-transform:uppercase;
+  letter-spacing:.1em;font-size:13px;font-weight:600;color:var(--muted);
+  margin-bottom:10px;}
 .trend-now{color:var(--ink);font-weight:600;}
 .spark{width:100%;height:44px;display:block;}
 .spark-empty{font-size:12px;color:var(--muted);padding:12px 0;}
@@ -509,8 +511,7 @@ def render_html(
   <div class="trends">{trends}</div>
 
   <div class="foot">
-    <span>Composite is airport friction only; the lounge is tracked separately.</span>
-    <span>Sources: flysfo &middot; NWS/AWC METAR &middot; FAA ASWS &middot; Waitwhile</span>
+    <span>Sources: flysfo &middot; FAA ASWS &middot; Waitwhile &middot; TomTom</span>
   </div>
 </div>
 </body>
