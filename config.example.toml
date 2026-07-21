@@ -1,22 +1,25 @@
 # Copy to config.toml and fill in. NOTHING here is required for the
-# confirmed-working signals (lounge, security, weather/fog, FAA ground delays,
-# and scheduled departures -- all keyless). Only drive time (Google) needs a
-# credential, and it stays inert until configured.
+# confirmed-working signals -- every wired source is keyless. Only the
+# optional drive-time row needs a credential, and it stays inert (row
+# omitted) until configured.
 #
 # Every value can also be set via an env var: SFO_<SECTION>_<KEY>, e.g.
-#   SFO_GOOGLE_ROUTES_API_KEY, SFO_DRIVE_ORIGIN.
-# Env vars win over this file (handy for systemd EnvironmentFile= secrets).
+#   SFO_TOMTOM_API_KEY, SFO_DRIVE_ORIGIN.
+# Env vars win over this file. On GitHub Actions these come from repo
+# secrets (gh secret set SFO_TOMTOM_API_KEY / SFO_DRIVE_ORIGIN).
 
 [tomtom]
-# Free key (no card) from developer.tomtom.com. Powers the "approach" signal:
-# live congestion on US-101 + the terminal access road. ~216 of the free
-# 2,500 calls/day at the 20-min cadence. Inert if empty.
+# Free key (no card) from developer.tomtom.com. Powers the "Drive to T1"
+# row (Routing API; 1 call per refresh of the free 2,500/day) and the
+# dormant approach.py congestion probes.
 api_key = ""
 
-[google]
-# Google Cloud "Routes API" key. Without it, the composite drops "drive".
-routes_api_key = ""
-
 [drive]
-# Your departure origin -- "lat,lng" or a street address. Not hardcoded.
+# Departure origin as "lat,lng" -- COORDINATES ONLY, no address, so nothing
+# personal ever appears in a tracked file or the published data.json (which
+# carries just the minutes). Geocode once (e.g. OSM Nominatim) and paste.
 origin = ""
+
+[google]
+# Google Cloud "Routes API" key -- only for the dormant drive.py module.
+routes_api_key = ""

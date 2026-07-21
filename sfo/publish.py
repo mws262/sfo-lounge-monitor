@@ -19,7 +19,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-from . import departures, faa, security
+from . import departures, drivetime, faa, security
 from .cli import gather
 from .config import Config
 from .score import band
@@ -45,6 +45,11 @@ def build_payload(bundle: dict, prev_history: list[dict],
         # Inbound / outbound FAA delays: value + the FAA's own trend arrow.
         *faa.direction_rows(bundle.get("faa") or {}),
     ]
+    # Drive time appears only once TomTom key + origin are configured (via
+    # Actions secrets) -- an unconfigured deploy shows no row at all.
+    drv = bundle.get("drive") or {}
+    if drv.get("reason") != "not_configured":
+        signals.append(drivetime.signal_row(drv))
 
     dep = bundle.get("departures") or {}
     delays = ((dep.get("delays_by_terminal") or {}).get(terminal)

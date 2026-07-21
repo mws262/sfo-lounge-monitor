@@ -29,9 +29,13 @@ jobs:
 
       # stdlib only -- no pip install step. Scoped to T1 (Harvey Milk / Club
       # SFO): security uses the best T1 line and departures count T1 only;
-      # FAA delays stay airport-wide. No secrets needed -- every wired source
-      # is keyless (approach/drive are dormant).
+      # FAA delays stay airport-wide. Every source is keyless except the
+      # optional drive-time row: TomTom key + origin come from secrets and
+      # the row is simply omitted when they're absent.
       - name: Refresh data.json
+        env:
+          SFO_TOMTOM_API_KEY: ${{ secrets.SFO_TOMTOM_API_KEY }}
+          SFO_DRIVE_ORIGIN: ${{ secrets.SFO_DRIVE_ORIGIN }}
         run: python -m sfo.publish --dir docs --terminal T1
 
       - name: Commit if changed
