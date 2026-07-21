@@ -164,11 +164,12 @@ STALE_MIN = 15  # beyond this, treat a reading as decoration, not data
 
 
 def fetch_checkpoints() -> dict[str, Any]:
-    """Live SEA security checkpoints, sorted best-line-first.
+    """Live SEA security checkpoints, in the airport's numbered order.
 
     All checkpoints feed the same secure side (SEA is one connected
-    terminal), so "which line do I join" is simply the best open one --
-    filtered by PreCheck if that's your lane.
+    terminal); the display keeps the airport's own numbering (which tracks
+    the terminal's physical layout) so rows don't shuffle between
+    refreshes, and the wait colors flag the best line.
     """
     try:
         data = common.http_get_json(CWT_URL, timeout=15)
@@ -199,9 +200,10 @@ def fetch_checkpoints() -> dict[str, Any]:
                      and (age is None or age <= STALE_MIN),
             "age_min": age,
         })
-    # Open + trustworthy first, shortest wait first; closed sink to the end.
-    cps.sort(key=lambda c: (not c["open"], not c["fresh"],
-                            c["wait_min"] if c["wait_min"] is not None else 99))
+    # The airport's own checkpoint numbering tracks the terminal's physical
+    # layout. Non-numeric names (never seen so far) sort after the numbers.
+    cps.sort(key=lambda c: (0, int(c["name"])) if c["name"].isdigit()
+             else (1, c["name"]))
     return {"ok": True, "checkpoints": cps}
 
 
