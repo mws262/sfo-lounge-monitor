@@ -78,7 +78,7 @@ def build_payload(bundle: dict, prev_history: list[dict],
         # SEA tab: live checkpoints, FAA rows for SEA, and SEA->SFO returns.
         "sea": {
             "security": bundle.get("sea_security"),
-            "signals": faa.direction_rows(bundle.get("sea_faa") or {}, "SEA"),
+            "signals": _sea_signals(bundle),
             "watch": dep.get("watch_return"),
         },
         # Shortest General security line (scoped), for the lounge join-planner.
@@ -88,6 +88,16 @@ def build_payload(bundle: dict, prev_history: list[dict],
         "lounge": lng if lng.get("ok") is not False else {"error": lng.get("error")},
         "history": history,
     }
+
+
+def _sea_signals(bundle: dict) -> list[dict]:
+    """FAA rows for SEA plus the Seattle-origin drive row (secrets-gated)."""
+    rows = faa.direction_rows(bundle.get("sea_faa") or {}, "SEA")
+    drv = bundle.get("sea_drive") or {}
+    if drv.get("reason") != "not_configured":
+        rows.append(drivetime.signal_row(
+            drv, label="Drive to SEA", dest_desc="the SEA departures curb"))
+    return rows
 
 
 def main(argv: list[str] | None = None) -> int:

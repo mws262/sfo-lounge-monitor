@@ -53,6 +53,8 @@ def gather(
     dep = _safe(departures.fetch, cfg, cache_dir=cache_dir, cache_ttl=board_ttl)
     sea_sec = _safe(seatac.fetch_checkpoints)
     drv = _safe(drivetime.fetch, cfg)
+    sea_drv = _safe(drivetime.fetch, cfg, origin=cfg.get("drive.sea_origin"),
+                    dest=drivetime.SEA_DEP_LATLNG)
 
     subscores = {
         "security": security.score(sec, terminal),
@@ -64,6 +66,7 @@ def gather(
     bundle.update({
         "security": sec, "faa": fa, "departures": dep, "drive": drv,
         "sea_faa": fa_all["SEA"], "sea_security": sea_sec,
+        "sea_drive": sea_drv,
         "subscores": subscores, "composite": comp, "terminal": terminal,
     })
     return bundle

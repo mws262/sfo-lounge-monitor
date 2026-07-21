@@ -15,10 +15,11 @@
 api_key = ""
 
 [drive]
-# Departure origin as "lat,lng" -- COORDINATES ONLY, no address, so nothing
+# Origins as "lat,lng" -- COORDINATES ONLY, no addresses, so nothing
 # personal ever appears in a tracked file or the published data.json (which
 # carries just the minutes). Geocode once (e.g. OSM Nominatim) and paste.
-origin = ""
+origin = ""      # -> "Drive to T1" row on the SFO tab
+sea_origin = ""  # -> "Drive to SEA" row on the SEA tab
 
 [google]
 # Google Cloud "Routes API" key -- only for the dormant drive.py module.

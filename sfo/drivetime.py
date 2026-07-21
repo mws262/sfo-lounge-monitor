@@ -1,22 +1,22 @@
-"""Traffic-aware drive time to SFO Terminal 1 (TomTom Routing API).
+"""Traffic-aware drive times to the airports (TomTom Routing API).
 
 The live-traffic sibling of the dormant Google module (drive.py): same
-question, answered with the TomTom account the project already holds for
-approach.py. One call per fetch; the free tier (2,500/day) dwarfs the
-cron cadence.
+question, answered with the TomTom account the project already holds.
+One call per configured route per fetch; the free tier (2,500/day)
+dwarfs the cron cadence. The key needs only the Routing API.
 
-Config (inert without both -- the signal row is simply omitted):
+Config (each route is inert -- row omitted -- until its origin exists):
 
     [tomtom]
-    api_key = "..."          # or SFO_TOMTOM_API_KEY
+    api_key = "..."              # or SFO_TOMTOM_API_KEY
     [drive]
-    origin = "37.65,-122.39" # or SFO_DRIVE_ORIGIN -- coordinates ONLY
+    origin = "37.65,-122.39"     # or SFO_DRIVE_ORIGIN     -> SFO T1 row
+    sea_origin = "47.68,-122.34" # or SFO_DRIVE_SEA_ORIGIN -> SEA row
 
-The origin is deliberately coordinates-only and lives in a gitignored
-config / Actions secret, never in this public repo; the published
-data.json carries just the minutes. The destination is the Terminal 1
-terminal-loop curb, resolved once (OSM) and hardcoded -- no runtime
-geocoding.
+Origins are deliberately coordinates-only and live in a gitignored
+config / Actions secrets, never in this public repo; the published
+data.json carries just the minutes. Destinations are the terminal curbs,
+each resolved once (OSM) and hardcoded -- no runtime geocoding.
 """
 from __future__ import annotations
 
@@ -26,8 +26,10 @@ from typing import Any
 from . import common
 from .config import Config
 
-# Harvey Milk Terminal 1, terminal-loop curb (one-off OSM geocode 2026-07-20).
-T1_LATLNG = (37.61308, -122.38459)
+# Terminal curbs, one-off OSM geocodes (2026-07-20/21). Small offsets don't
+# matter: routing snaps to the nearest drivable point on the terminal loop.
+T1_LATLNG = (37.61308, -122.38459)       # SFO Harvey Milk Terminal 1
+SEA_DEP_LATLNG = (47.44310, -122.30050)  # SEA main-terminal departures drive
 
 URL = ("https://api.tomtom.com/routing/1/calculateRoute/"
        "{olat},{olon}:{dlat},{dlon}/json"
@@ -48,16 +50,17 @@ def _origin_latlng(origin: str | None) -> tuple[float, float] | None:
         return None
 
 
-def fetch(cfg: Config | None = None) -> dict[str, Any]:
+def fetch(cfg: Config | None = None, origin: str | None = None,
+          dest: tuple[float, float] = T1_LATLNG) -> dict[str, Any]:
     cfg = cfg or Config()
     key = cfg.tomtom_key
-    origin = _origin_latlng(cfg.drive_origin)
-    if not key or not origin:
+    o = _origin_latlng(origin if origin is not None else cfg.drive_origin)
+    if not key or not o:
         return {"ok": False, "reason": "not_configured",
-                "error": "tomtom.api_key + drive.origin (lat,lng) required"}
+                "error": "tomtom.api_key + an origin (lat,lng) required"}
 
-    url = URL.format(olat=origin[0], olon=origin[1],
-                     dlat=T1_LATLNG[0], dlon=T1_LATLNG[1], key=key)
+    url = URL.format(olat=o[0], olon=o[1],
+                     dlat=dest[0], dlon=dest[1], key=key)
     try:
         status, body = common.http_get(url, timeout=15)
         if status != 200:
@@ -89,11 +92,12 @@ def score(reading: dict) -> float | None:
     return common.linscale(reading["minutes"] / free, 1.0, RATIO_WORST)
 
 
-def signal_row(reading: dict) -> dict:
-    """A ready-to-render stat row for the Airport status card."""
+def signal_row(reading: dict, label: str = "Drive to T1",
+               dest_desc: str = "the Terminal 1 curb") -> dict:
+    """A ready-to-render stat row for an Airport status card."""
     ok = reading.get("ok")
     note = ("TomTom live-traffic drive time from the configured origin to "
-            "the Terminal 1 curb.")
+            f"{dest_desc}.")
     if ok:
         if reading.get("freeflow_min"):
             note += (f" Free-flow is ~{reading['freeflow_min']}m; the "
@@ -106,7 +110,7 @@ def signal_row(reading: dict) -> dict:
         summary = None
     return {
         "key": "drive",
-        "label": "Drive to T1",
+        "label": label,
         "value": f"~{reading['minutes']}m" if ok else "n/a",
         "score": score(reading),
         "note": note,

@@ -36,6 +36,7 @@ jobs:
         env:
           SFO_TOMTOM_API_KEY: ${{ secrets.SFO_TOMTOM_API_KEY }}
           SFO_DRIVE_ORIGIN: ${{ secrets.SFO_DRIVE_ORIGIN }}
+          SFO_DRIVE_SEA_ORIGIN: ${{ secrets.SFO_DRIVE_SEA_ORIGIN }}
         run: python -m sfo.publish --dir docs --terminal T1
 
       - name: Commit if changed
