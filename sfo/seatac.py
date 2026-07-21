@@ -188,12 +188,16 @@ def fetch_checkpoints() -> dict[str, Any]:
             "wait_min": c.get("WaitTimeMinutes"),
             "queue": c.get("QueueLength"),
             "lanes": lanes,
+            # The API's numeric `PreCheck` field is a has-Pre BOOLEAN, not a
+            # wait time -- confirmed 2026-07-21 under real Monday-morning
+            # load: every Pre-available checkpoint read exactly 1 (never
+            # higher) even at 13m general waits with 85+ queued, and it
+            # tracks the Options list perfectly, so we derive from Options
+            # and don't ship the duplicate. Note SEA runs dedicated Pre-ONLY
+            # checkpoints at peak (lanes == ["Pre"]); WaitTimeMinutes is
+            # then itself the PreCheck wait, which best_wait(pre=True)
+            # already exploits.
             "pre": "Pre" in lanes,
-            # Raw `PreCheck` field, semantics UNRESOLVED (2026-07-19): either
-            # a has-PreCheck boolean or a separate Pre-lane wait time. The
-            # Port's own widget ignores it. Passed through for observation;
-            # do not display until a busy-morning reading disambiguates.
-            "pre_raw": c.get("PreCheck"),
             # The API serves hours-stale numbers and says so -- honor it.
             "fresh": bool(c.get("IsDataAvailable"))
                      and (age is None or age <= STALE_MIN),
