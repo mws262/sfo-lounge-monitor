@@ -346,14 +346,53 @@ function deriveState(f){
 }
 
 // Rough axis tick, scaled to the span: "8:20 AM" under 3h, "8 AM" within a
-// day, "Sun 8 AM" once the window crosses days (the 7-day history would
-// otherwise show three indistinguishable hours). Always PT.
+// day, "Sun 8 AM" across a few days, "Jul 20" from a week out -- past that a
+// weekday repeats, and a 14-day window would label all three ticks "Wed 1 AM".
+// Always PT (both airports share the zone); the day gridlines carry the
+// finer rhythm once labels drop to dates.
 function tickLabel(ms, spanHrs){
-  const opt = {timeZone:"America/Los_Angeles", hour:"numeric"};
-  if(spanHrs < 3) opt.minute = "2-digit";
-  if(spanHrs > 20) opt.weekday = "short";
+  const opt = {timeZone:"America/Los_Angeles"};
+  if(spanHrs >= 144){
+    opt.month = "short"; opt.day = "numeric";
+  }else{
+    opt.hour = "numeric";
+    if(spanHrs < 3) opt.minute = "2-digit";
+    if(spanHrs > 20) opt.weekday = "short";
+  }
   try{ return new Intl.DateTimeFormat("en-US", opt).format(new Date(ms)); }
   catch(e){ return "?"; }
+}
+
+// Hour-of-day in PT. Pacific is a whole-hour offset from UTC, so UTC hour
+// boundaries are also PT hour boundaries -- stepping by 3600000 ms hits
+// every local midnight/noon exactly, DST shifts included, with no date math.
+const _PT_HOUR = new Intl.DateTimeFormat("en-US",
+  {timeZone:"America/Los_Angeles", hourCycle:"h23", hour:"2-digit"});
+function ptHour(ms){ return parseInt(_PT_HOUR.format(new Date(ms)), 10); }
+
+// Vertical guides: solid at midnight, dotted at noon between them. Density
+// is governed by on-screen SPACING, not a guessed day count -- history is
+// capped by COUNT (504 samples), not age, so at the cadence GitHub actually
+// delivers the window can stretch from days to ~a month.
+const SPARK_VW = 260;          // viewBox units; the svg stretches to fit
+const GUIDE_MIN_GAP = 14;      // don't draw guides closer than this
+function timeGuides(t0, t1){
+  const days = (t1 - t0) / 86400000;
+  const perDay = SPARK_VW / (days || 1);
+  const showNoon = perDay / 2 >= GUIDE_MIN_GAP * 0.65;   // half-days legible?
+  const step = Math.max(1, Math.ceil(GUIDE_MIN_GAP / perDay));
+  const out = [];
+  let midnights = 0;
+  for(let t = Math.ceil(t0 / 3600000) * 3600000; t <= t1; t += 3600000){
+    const h = ptHour(t);
+    if(h === 0){
+      if(midnights % step === 0) out.push([t, "day"]);
+      midnights++;
+    }else if(h === 12 && showNoon){
+      out.push([t, "noon"]);
+    }
+  }
+  return out;
 }
 
 function sparkline(container, values, color, stamps){
@@ -371,7 +410,7 @@ function sparkline(container, values, color, stamps){
     const e = document.createElement("div"); e.className = "spark-empty";
     e.textContent = "not enough history yet"; container.append(e); return;
   }
-  const VW = 260, H = 44;   // viewBox units; the svg stretches to fit
+  const VW = SPARK_VW, H = 44;
   const t0 = pairs[0][0], t1 = pairs[pairs.length-1][0];
   const tspan = (t1 - t0) || 1;
   const vals = pairs.map(p => p[1]);
@@ -380,9 +419,16 @@ function sparkline(container, values, color, stamps){
   const y = v => (H-4-(v-lo)/span*(H-12)+2).toFixed(1);
   const line = pairs.map(p => x(p[0])+","+y(p[1])).join(" ");
   const area = "2,"+(H-2)+" "+line+" "+(VW-2)+","+(H-2);
+  // Day/noon guides go in first so the trend line draws over them.
+  const guides = timeGuides(t0, t1).map(([t, kind]) =>
+    '<line x1="'+x(t)+'" y1="0" x2="'+x(t)+'" y2="'+H+'" stroke="currentColor" '+
+    'vector-effect="non-scaling-stroke" stroke-width="1" stroke-opacity="'+
+    (kind === "day" ? "0.30" : "0.16") + '"' +
+    (kind === "noon" ? ' stroke-dasharray="2 3"' : "") + '/>').join("");
   const svg = document.createElement("div");
   svg.innerHTML =
     '<svg viewBox="0 0 '+VW+' '+H+'" class="spark" preserveAspectRatio="none" role="img" aria-label="trend">'+
+    guides +
     '<polyline points="'+area+'" fill="'+color+'" fill-opacity="0.10" stroke="none"/>'+
     '<polyline points="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.6" '+
     'stroke-linejoin="round" stroke-linecap="round"/>'+
