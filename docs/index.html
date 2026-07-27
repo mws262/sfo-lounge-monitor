@@ -123,6 +123,12 @@ body{background:var(--bg);color:var(--ink);
 .trend-now{color:var(--ink);font-weight:600;}
 .spark{width:100%;height:44px;display:block;}
 .spark-empty{font-size:12px;color:var(--muted);padding:12px 0;}
+/* Axis labels are absolutely placed so each sits centered on its gridline. */
+.sparkaxis{position:relative;height:15px;margin-top:4px;
+  font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:11px;color:var(--muted);}
+.sparkaxis span{position:absolute;top:0;transform:translateX(-50%);
+  white-space:nowrap;}
 
 .tabbar{display:flex;gap:8px;margin-bottom:20px;}
 .tabbtn{font-family:ui-monospace,monospace;letter-spacing:.1em;font-size:13px;
@@ -420,7 +426,8 @@ function sparkline(container, values, color, stamps){
   const line = pairs.map(p => x(p[0])+","+y(p[1])).join(" ");
   const area = "2,"+(H-2)+" "+line+" "+(VW-2)+","+(H-2);
   // Day/noon guides go in first so the trend line draws over them.
-  const guides = timeGuides(t0, t1).map(([t, kind]) =>
+  const guideList = timeGuides(t0, t1);
+  const guides = guideList.map(([t, kind]) =>
     '<line x1="'+x(t)+'" y1="0" x2="'+x(t)+'" y2="'+H+'" stroke="currentColor" '+
     'vector-effect="non-scaling-stroke" stroke-width="1" stroke-opacity="'+
     (kind === "day" ? "0.30" : "0.16") + '"' +
@@ -435,15 +442,51 @@ function sparkline(container, values, color, stamps){
     '<circle cx="'+x(t1)+'" cy="'+y(pairs[pairs.length-1][1])+'" r="2.6" fill="'+color+'"/></svg>';
   container.append(svg.firstChild);
 
-  // Three rough ticks -- oldest / midpoint / newest. Time-proportional x
-  // means the midpoint really does sit at 50%, so space-between is exact.
+  // Axis labels sit centered on the solid day dividers -- each date names
+  // the midnight its line marks. With no midnight in range (a sub-day
+  // window) there's nothing to anchor to, so fall back to oldest/mid/newest.
   const hrs = tspan / 3600000;
-  const ax = document.createElement("div"); ax.className = "dlabels";
-  for(const t of [t0, t0 + tspan/2, t1]){
-    const s = document.createElement("span");
-    s.textContent = tickLabel(t, hrs); ax.append(s);
-  }
+  const days = guideList.filter(g => g[1] === "day").map(g => g[0]);
+  const ax = document.createElement("div"); ax.className = "sparkaxis";
+  ax._anchors = (days.length >= 2 ? days : [t0, t0 + tspan/2, t1])
+    .map(t => ({label: tickLabel(t, hrs), pos: x(t) / VW * 100}));
   container.append(ax);
+  layoutAxis(ax);
+}
+
+// Place one label per anchor, centered on it, then drop every Nth until
+// neighbours stop touching and nudge the end labels back inside the card.
+// Widths are measured, not estimated (font metrics and card width both move
+// with the viewport), and the whole thing rebuilds from the stored anchors
+// so it can re-run idempotently -- a first render at a not-yet-laid-out
+// width would otherwise over-thin permanently.
+function layoutAxis(ax){
+  const anchors = ax._anchors;
+  if(!anchors) return;
+  ax.textContent = "";
+  for(const a of anchors){
+    const s = document.createElement("span");
+    s.textContent = a.label;
+    s.style.left = a.pos.toFixed(2) + "%";
+    ax.append(s);
+  }
+  const box = ax.getBoundingClientRect();
+  const kids = Array.from(ax.children);
+  if(kids.length < 2 || !box.width) return;   // not laid out yet; retry later
+  const widest = Math.max(...kids.map(k => k.getBoundingClientRect().width));
+  const gapPx = Math.max((anchors[1].pos - anchors[0].pos) / 100 * box.width, 1);
+  const step = Math.max(1, Math.ceil((widest + 8) / gapPx));
+  kids.forEach((k, i) => { if(i % step) k.remove(); });
+  for(const k of Array.from(ax.children)){
+    const b = k.getBoundingClientRect();
+    if(b.left < box.left){ k.style.left = "0"; k.style.transform = "none"; }
+    else if(b.right > box.right){
+      k.style.left = "auto"; k.style.right = "0"; k.style.transform = "none";
+    }
+  }
+}
+function relayoutAxes(){
+  for(const ax of document.querySelectorAll(".sparkaxis")) layoutAxis(ax);
 }
 
 /* ------------------------------------------------------------ lounge (live) */
@@ -943,6 +986,20 @@ loadData(); pollLounge();
 setInterval(loadData, DATA_POLL_MS);
 setInterval(pollLounge, LOUNGE_POLL_MS);
 document.addEventListener("visibilitychange", () => { if(!document.hidden) pollLounge(); });
+// How many axis labels fit depends on the card width, which moves with the
+// viewport (the trend cards go two-up above 720px and stack below it) and
+// again when layout first settles. Watch the plots themselves rather than
+// just window resize, so the first paint gets a correct pass too. Relayout
+// is width-only and the axis height is fixed, so this can't feed back.
+let _resizeT = null;
+const _relayoutSoon = () => {
+  clearTimeout(_resizeT); _resizeT = setTimeout(relayoutAxes, 120);
+};
+window.addEventListener("resize", _relayoutSoon);
+if(window.ResizeObserver){
+  const ro = new ResizeObserver(_relayoutSoon);
+  for(const el of [$("spark-air"), $("spark-q")]) if(el) ro.observe(el);
+}
 </script>
 </body>
 </html>
