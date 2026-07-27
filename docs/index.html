@@ -345,22 +345,59 @@ function deriveState(f){
   return "OPEN/walk-in";
 }
 
-function sparkline(container, values, color){
-  const pts = values.filter(v => v!=null);
-  if(pts.length < 2){ container.innerHTML =
-    '<div class="spark-empty">not enough history yet</div>'; return; }
-  const W=260, H=44, lo=Math.min(...pts), hi=Math.max(...pts), span=(hi-lo)||1;
-  const n=pts.length;
-  const x=i => (i/(n-1)*(W-4)+2).toFixed(1);
-  const y=v => (H-4-(v-lo)/span*(H-12)+2).toFixed(1);
-  const line = pts.map((v,i)=>x(i)+","+y(v)).join(" ");
-  const area = "2,"+(H-2)+" "+line+" "+(W-2)+","+(H-2);
-  container.innerHTML =
-    '<svg viewBox="0 0 '+W+' '+H+'" class="spark" preserveAspectRatio="none" role="img" aria-label="trend">'+
+// Rough axis tick, scaled to the span: "8:20 AM" under 3h, "8 AM" within a
+// day, "Sun 8 AM" once the window crosses days (the 7-day history would
+// otherwise show three indistinguishable hours). Always PT.
+function tickLabel(ms, spanHrs){
+  const opt = {timeZone:"America/Los_Angeles", hour:"numeric"};
+  if(spanHrs < 3) opt.minute = "2-digit";
+  if(spanHrs > 20) opt.weekday = "short";
+  try{ return new Intl.DateTimeFormat("en-US", opt).format(new Date(ms)); }
+  catch(e){ return "?"; }
+}
+
+function sparkline(container, values, color, stamps){
+  // Points are placed by TIME, not by sample index: GitHub's cron is
+  // best-effort, so samples land at irregular gaps and index spacing would
+  // draw a distorted curve under an honest time axis.
+  const pairs = [];
+  for(let i = 0; i < values.length; i++){
+    const v = values[i], t = Date.parse((stamps || [])[i]);
+    if(v != null && !isNaN(t)) pairs.push([t, v]);
+  }
+  pairs.sort((a, b) => a[0] - b[0]);
+  container.textContent = "";
+  if(pairs.length < 2){
+    const e = document.createElement("div"); e.className = "spark-empty";
+    e.textContent = "not enough history yet"; container.append(e); return;
+  }
+  const VW = 260, H = 44;   // viewBox units; the svg stretches to fit
+  const t0 = pairs[0][0], t1 = pairs[pairs.length-1][0];
+  const tspan = (t1 - t0) || 1;
+  const vals = pairs.map(p => p[1]);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi-lo)||1;
+  const x = t => ((t-t0)/tspan*(VW-4)+2).toFixed(1);
+  const y = v => (H-4-(v-lo)/span*(H-12)+2).toFixed(1);
+  const line = pairs.map(p => x(p[0])+","+y(p[1])).join(" ");
+  const area = "2,"+(H-2)+" "+line+" "+(VW-2)+","+(H-2);
+  const svg = document.createElement("div");
+  svg.innerHTML =
+    '<svg viewBox="0 0 '+VW+' '+H+'" class="spark" preserveAspectRatio="none" role="img" aria-label="trend">'+
     '<polyline points="'+area+'" fill="'+color+'" fill-opacity="0.10" stroke="none"/>'+
     '<polyline points="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.6" '+
     'stroke-linejoin="round" stroke-linecap="round"/>'+
-    '<circle cx="'+x(n-1)+'" cy="'+y(pts[n-1])+'" r="2.6" fill="'+color+'"/></svg>';
+    '<circle cx="'+x(t1)+'" cy="'+y(pairs[pairs.length-1][1])+'" r="2.6" fill="'+color+'"/></svg>';
+  container.append(svg.firstChild);
+
+  // Three rough ticks -- oldest / midpoint / newest. Time-proportional x
+  // means the midpoint really does sit at 50%, so space-between is exact.
+  const hrs = tspan / 3600000;
+  const ax = document.createElement("div"); ax.className = "dlabels";
+  for(const t of [t0, t0 + tspan/2, t1]){
+    const s = document.createElement("span");
+    s.textContent = tickLabel(t, hrs); ax.append(s);
+  }
+  container.append(ax);
 }
 
 /* ------------------------------------------------------------ lounge (live) */
@@ -606,9 +643,10 @@ function renderAirport(d){
   $("trend-q-label").textContent = "Lounge queue · "
     + queues.filter(v=>v!=null).length + " samples" + histSpan(hist, "lounge_waiting");
   $("trend-air-now").textContent = nowMed != null ? nowMed + "m" : "—";
-  sparkline($("spark-air"), delays, delayTrendColor(nowMed));
+  const stamps = hist.map(h => h.ts);
+  sparkline($("spark-air"), delays, delayTrendColor(nowMed), stamps);
   sparkline($("spark-q"), queues, getComputedStyle(document.documentElement)
-    .getPropertyValue("--accent").trim() || "#f5a524");
+    .getPropertyValue("--accent").trim() || "#f5a524", stamps);
 }
 
 /* --------------------------------------------------- watched destinations */
@@ -720,6 +758,8 @@ function histSpan(hist, key){
   if(ts.length < 2) return "";
   const hrs = (Math.max(...ts) - Math.min(...ts)) / 3600000;
   if(hrs < 1) return " · last " + Math.round(hrs * 60) + "m";
+  // The 7-day retention makes bare hours unreadable ("last 174h").
+  if(hrs >= 48) return " · last " + (hrs / 24).toFixed(1) + "d";
   return " · last " + (hrs < 10 ? hrs.toFixed(1) : Math.round(hrs)) + "h";
 }
 // Median of a sorted ascending array (the delays_sorted we ship).
